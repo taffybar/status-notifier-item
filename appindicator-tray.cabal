@@ -1,8 +1,14 @@
+-- This file has been generated from package.yaml by hpack version 0.20.0.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 9958b4be385d29bcd407190622ec4d782f613fd7c25efea8524e5a808f945118
+
 name:           appindicator-tray
 version:        0.1.0.0
 description:    Please see the README on Github at <https://github.com/IvanMalison/appindicator-tray#readme>
-homepage:       https://github.com/IvanMalison/appindicator-tray#readme
-bug-reports:    https://github.com/IvanMalison/appindicator-tray/issues
+homepage:       https://github.com/githubuser/appindicator-tray#readme
+bug-reports:    https://github.com/githubuser/appindicator-tray/issues
 author:         Ivan Malison
 maintainer:     IvanMalison@gmail.com
 copyright:      2018 Ivan Malison
@@ -15,19 +21,25 @@ extra-source-files:
     ChangeLog.md
     README.md
 
+data-files:
+    xml/StatusNotifierWatcher.xml
+
 source-repository head
   type: git
-  location: https://github.com/IvanMalison/appindicator-tray
+  location: https://github.com/githubuser/appindicator-tray
 
 library
   hs-source-dirs:
       src
-  build-depends: base >=4.7 && <5
-               , dbus >= 0.10.7 && < 1.0
-               , gtk3
+  build-depends:
+      base >=4.7 && <5
+    , dbus >=0.10.7 && <1.0
+    , filepath
+    , gtk3
   exposed-modules:
-                  AppIndicator.Protocol
-                  AppIndicator.Tray
+      AppIndicator.Protocol
+      AppIndicator.Tray
+      AppIndicator.Util
   other-modules:
       Paths_appindicator_tray
   default-language: Haskell2010
