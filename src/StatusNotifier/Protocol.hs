@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
-module AppIndicator.Protocol where
+module StatusNotifier.Protocol where
 
-import AppIndicator.Util
+import StatusNotifier.Util
 import DBus
 import DBus.Client
 import DBus.Introspection

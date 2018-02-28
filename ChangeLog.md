@@ -1,3 +1,3 @@
-# Changelog for appindicator-tray
+# Changelog for status-notifier-item-tray
 
 ## Unreleased changes

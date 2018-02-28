@@ -1,1 +1,0 @@
-module AppIndicator.Tray where

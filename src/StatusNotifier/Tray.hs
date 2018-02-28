@@ -1,0 +1,1 @@
+module StatusNotifier.Tray where

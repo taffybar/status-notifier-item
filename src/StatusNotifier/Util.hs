@@ -1,4 +1,4 @@
-module AppIndicator.Util where
+module StatusNotifier.Util where
 
 infixl 4 ??
 (??) :: Functor f => f (a -> b) -> a -> f b

@@ -1,6 +1,6 @@
-name:                appindicator-tray
+name:                status-notifier-item-tray
 version:             0.1.0.0
-github:              "githubuser/appindicator-tray"
+github:              "IvanMalison/status-notifier-item-tray"
 license:             BSD3
 author:              "Ivan Malison"
 maintainer:          "IvanMalison@gmail.com"
@@ -12,7 +12,7 @@ extra-source-files:
 
 data-files: xml/*
 
-description:         Please see the README on Github at <https://github.com/IvanMalison/appindicator-tray#readme>
+description:         Please see the README on Github at <https://github.com/IvanMalison/status-notifier-item-tray#readme>
 
 dependencies:
 - base >= 4.7 && < 5

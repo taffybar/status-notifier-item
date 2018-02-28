@@ -1,1 +1,1 @@
-# appindicator-tray
+# status-notifier-item-trayy
