@@ -10,17 +10,20 @@ extra-source-files:
 - README.md
 - ChangeLog.md
 
-data-files: xml/*
-
 description: Please see the README on Github at <https://github.com/IvanMalison/status-notifier-item-tray#readme>
 
-dependencies:
-- base >= 4.7 && < 5
-- dbus >= 0.10.7 && < 1.0
-- filepath
-- gtk3
-
 library:
-  pkg-config-dependencies:
-    - gtk+-3.0
   source-dirs: src
+  dependencies:
+    - base >= 4.7 && < 5
+    - dbus >= 0.10.7 && < 1.0
+    - filepath
+    - gtk3
+
+executables:
+  status-notifier-watcher:
+    source-dirs: .
+    dependencies:
+      - base >= 4.7 && < 5
+      - status-notifier-item-tray
+    main: WatcherMain.hs

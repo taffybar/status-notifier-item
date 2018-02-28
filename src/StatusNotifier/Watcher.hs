@@ -41,7 +41,7 @@ data ItemEntry = ItemEntry
   { serviceName :: String
   }
 
-startWatcher = do
+startWatcher stop = do
   client <- connectSession
   notifierItems <- newMVar []
   notifierHosts <- newMVar []
@@ -70,6 +70,8 @@ startWatcher = do
 
       protocolVersion = return 1 :: IO Int32
 
+      stopWatcher = putMVar stop True
+
       filterDeadService deadService mvar =
         modifyMVar mvar $ return . partition ((/= deadService) . serviceName)
 
@@ -93,4 +95,5 @@ startWatcher = do
            , makeWatcherMethod "RegisteredStatusNotifierItems" registeredStatusNotifierItems
            , makeWatcherMethod "IsStatusNotifierHostRegistered" isStatusNotifierHostRegistered
            , makeWatcherMethod "ProtocolVersion" protocolVersion
+           , makeWatcherMethod "stopWatcher" stopWatcher
            ]
