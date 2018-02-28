@@ -8,7 +8,7 @@ import DBus.Introspection
 import Data.List (sort)
 import Data.Maybe
 import Data.String (fromString)
-import Paths_appindicator_tray ( getDataDir )
+import Paths_status_notifier_item_tray ( getDataDir )
 import System.FilePath ( (</>) )
 import System.IO.Unsafe
 

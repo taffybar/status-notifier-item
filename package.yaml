@@ -12,7 +12,7 @@ extra-source-files:
 
 data-files: xml/*
 
-description:         Please see the README on Github at <https://github.com/IvanMalison/status-notifier-item-tray#readme>
+description: Please see the README on Github at <https://github.com/IvanMalison/status-notifier-item-tray#readme>
 
 dependencies:
 - base >= 4.7 && < 5
@@ -20,7 +20,7 @@ dependencies:
 - filepath
 - gtk3
 
-pkg-config-dependencies: [gtk+-3.0]
-
 library:
+  pkg-config-dependencies:
+    - gtk+-3.0
   source-dirs: src
