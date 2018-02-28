@@ -5,5 +5,5 @@ import Control.Concurrent.MVar
 
 main = do
   stop <- newEmptyMVar
-  startWatcher stop
+  startWatcher defaultWatcherParams { watcherStop = putMVar stop True }
   takeMVar stop

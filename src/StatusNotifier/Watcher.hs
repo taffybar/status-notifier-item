@@ -15,22 +15,6 @@ import Text.Printf
 statusNotifierWatcherString :: String
 statusNotifierWatcherString = "StatusNotifierWatcher"
 
-watcherInterface :: InterfaceName
-watcherInterface = fromString $ printf "%s.%s" protocolPrefix statusNotifierWatcherString
-
-makeWatcherMethod :: AutoMethod fn => MemberName -> fn -> Method
-makeWatcherMethod = autoMethod watcherInterface
-
-watcherSignal =
-  Signal
-  { signalPath = "/"
-  , signalInterface = watcherInterface
-  , signalMember = ""
-  , signalSender = Nothing
-  , signalDestination = Nothing
-  , signalBody = []
-  }
-
 nameOwnerChangedMatchRule =
   matchAny
   { matchSender = Just "org.freedesktop.DBus"
@@ -38,15 +22,47 @@ nameOwnerChangedMatchRule =
   }
 
 data ItemEntry = ItemEntry
-  { serviceName :: String
+  { serviceName :: String }
+
+data WatcherParams = WatcherParams
+  { watcherNamespace :: String
+  , watcherLogger :: String -> IO ()
+  , watcherStop :: IO ()
   }
 
-startWatcher stop = do
+defaultWatcherParams =
+  WatcherParams
+  { watcherNamespace = "org.freedesktop"
+  , watcherLogger = putStrLn
+  , watcherStop = return ()
+  }
+
+startWatcher WatcherParams
+               { watcherNamespace = interfaceNamespace
+               , watcherLogger = log
+               , watcherStop = stopWatcher
+               }   = do
   client <- connectSession
   notifierItems <- newMVar []
   notifierHosts <- newMVar []
 
-  let emitFromWatcher signal name =
+  let watcherInterface =
+        fromString $ printf "%s.%s" interfaceNamespace statusNotifierWatcherString
+
+      makeWatcherMethod :: AutoMethod fn => MemberName -> fn -> Method
+      makeWatcherMethod = autoMethod watcherInterface
+
+      watcherSignal =
+        Signal
+        { signalPath = "/"
+        , signalInterface = watcherInterface
+        , signalMember = ""
+        , signalSender = Nothing
+        , signalDestination = Nothing
+        , signalBody = []
+        }
+
+      emitFromWatcher signal name =
         emit client
              watcherSignal { signalMember = signal
                            , signalBody = [toVariant name]
@@ -69,8 +85,6 @@ startWatcher stop = do
       isStatusNotifierHostRegistered = not . null <$> readMVar notifierHosts
 
       protocolVersion = return 1 :: IO Int32
-
-      stopWatcher = putMVar stop True
 
       filterDeadService deadService mvar =
         modifyMVar mvar $ return . partition ((/= deadService) . serviceName)

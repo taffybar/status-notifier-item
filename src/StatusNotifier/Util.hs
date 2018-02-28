@@ -1,7 +1,5 @@
 module StatusNotifier.Util where
 
-protocolPrefix = "org.freedesktop"
-
 infixl 4 ??
 (??) :: Functor f => f (a -> b) -> a -> f b
 fab ?? a = fmap ($ a) fab
