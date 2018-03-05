@@ -32,6 +32,7 @@ data WatcherParams = WatcherParams
   , watcherPath :: String
   , watcherLogger :: String -> IO ()
   , watcherStop :: IO ()
+  , watcherClient :: Maybe Client
   }
 
 defaultWatcherParams =
@@ -40,6 +41,7 @@ defaultWatcherParams =
   , watcherLogger = putStrLn
   , watcherStop = return ()
   , watcherPath = "/StatusNotifierWatcher"
+  , watcherClient = Nothing
   }
 
 startWatcher WatcherParams
@@ -47,18 +49,18 @@ startWatcher WatcherParams
                , watcherLogger = log
                , watcherStop = stopWatcher
                , watcherPath = path
-               }   = do
-  client <- connectSession
-  notifierItems <- newMVar []
-  notifierHosts <- newMVar []
-
+               , watcherClient = mclient
+               } = do
   let watcherInterfaceName =
         fromString $ printf "%s.%s" interfaceNamespace statusNotifierWatcherString
 
-      makeWatcherMethod :: AutoMethod fn => MemberName -> fn -> Method
-      makeWatcherMethod = autoMethod
+  client <- maybe connectSession return mclient
+  nameRequestResult <- requestName client (coerce watcherInterfaceName) []
 
-      watcherSignal =
+  notifierItems <- newMVar []
+  notifierHosts <- newMVar []
+
+  let watcherSignal =
         Signal
         { signalPath = fromString path
         , signalInterface = watcherInterfaceName
@@ -139,6 +141,11 @@ startWatcher WatcherParams
         , interfaceSignals = []
         }
 
-  _ <- requestName client (coerce watcherInterfaceName) []
-  _ <- addMatch client nameOwnerChangedMatchRule handleNameOwnerChanged
-  export client (fromString path) watcherInterface
+  case nameRequestResult of
+    NamePrimaryOwner ->
+      do
+        _ <- addMatch client nameOwnerChangedMatchRule handleNameOwnerChanged
+        export client (fromString path) watcherInterface
+    _ -> stopWatcher
+
+  return nameRequestResult
