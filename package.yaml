@@ -16,7 +16,7 @@ library:
   source-dirs: src
   dependencies:
     - base >= 4.7 && < 5
-    - dbus >= 0.10.7 && < 1.0
+    - dbus > 1.0
     - filepath
     - gtk3
 

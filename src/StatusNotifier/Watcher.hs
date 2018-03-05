@@ -119,23 +119,25 @@ startWatcher WatcherParams
                    return ()
           _ -> return ()
 
-      watcherInterface = Interface
-                         { interfaceName = watcherInterfaceName
-                         , interfaceMethods =
-                           [ autoMethod "RegisterStatusNotifierItem" registerStatusNotifierItem
-                           , autoMethod "RegisterStatusNotifierHost" registerStatusNotifierHost
-                           , autoMethod "stopWatcher" stopWatcher
-                           ]
-                         , interfaceProperties =
-                           [ autoProperty "RegisteredStatusNotifierItems"
-                             (Just registeredStatusNotifierItems) Nothing
-                           , autoProperty "IsStatusNotifierHostRegistered"
-                             (Just isStatusNotifierHostRegistered) Nothing
-                           , autoProperty "ProtocolVersion"
-                             (Just protocolVersion) Nothing
-                           ]
-                         , interfaceSignals = []
-                         }
+      watcherMethods =
+        [ autoMethod "RegisterStatusNotifierItem" registerStatusNotifierItem
+        , autoMethod "RegisterStatusNotifierHost" registerStatusNotifierHost
+        , autoMethod "stopWatcher" stopWatcher
+        ]
+
+      watcherProperties =
+        [ readOnlyProperty "RegisteredStatusNotifierItems" registeredStatusNotifierItems
+        , readOnlyProperty "IsStatusNotifierHostRegistered" isStatusNotifierHostRegistered
+        , readOnlyProperty "ProtocolVersion" protocolVersion
+        ]
+
+      watcherInterface =
+        Interface
+        { interfaceName = watcherInterfaceName
+        , interfaceMethods = watcherMethods
+        , interfaceProperties = watcherProperties
+        , interfaceSignals = []
+        }
 
   _ <- requestName client (coerce watcherInterfaceName) []
   _ <- addMatch client nameOwnerChangedMatchRule handleNameOwnerChanged
