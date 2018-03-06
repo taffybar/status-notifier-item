@@ -18,7 +18,6 @@ library:
     - base >= 4.7 && < 5
     - dbus > 1.0
     - filepath
-    - gtk3
 
 executables:
   status-notifier-watcher:
@@ -26,4 +25,5 @@ executables:
     dependencies:
       - base >= 4.7 && < 5
       - status-notifier-item-tray
+      - optparse-applicative
     main: WatcherMain.hs
