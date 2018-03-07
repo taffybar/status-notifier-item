@@ -3,7 +3,7 @@ module Main where
 import Control.Concurrent.MVar
 import Data.Semigroup ((<>))
 import Options.Applicative
-import StatusNotifier.Watcher
+import StatusNotifier.Watcher.Service
 
 setWatcherParams namespace path =
   defaultWatcherParams
@@ -32,5 +32,6 @@ main = do
                    (  fullDesc
                    <> progDesc "Run a StatusNotifierWatcher")
   stop <- newEmptyMVar
-  startWatcher watcherParams { watcherStop = putMVar stop () }
+  (_, startWatcher) <- buildWatcher watcherParams { watcherStop = putMVar stop () }
+  startWatcher
   takeMVar stop

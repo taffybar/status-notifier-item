@@ -1,28 +1,25 @@
 {-# LANGUAGE OverloadedStrings #-}
-module StatusNotifier.Watcher where
+module StatusNotifier.Watcher.Service where
 
-import Control.Monad
-import Control.Concurrent.MVar
-import DBus
-import DBus.Client
-import DBus.Internal.Message
-import DBus.Internal.Types
-import Data.Maybe
-import Data.Coerce
-import Data.Int
-import Data.List
-import Data.String
-import StatusNotifier.Util
-import Text.Printf
+import           Control.Concurrent.MVar
+import           Control.Monad
+import           DBus
+import           DBus.Client
+import           DBus.Generate
+import           DBus.Internal.Message
+import           DBus.Internal.Types
+import qualified DBus.Introspection as I
+import           Data.Coerce
+import           Data.Int
+import           Data.List
+import           Data.Maybe
+import           Data.String
+import           StatusNotifier.Util
+import           System.IO.Unsafe
+import           Text.Printf
 
 statusNotifierWatcherString :: String
 statusNotifierWatcherString = "StatusNotifierWatcher"
-
-nameOwnerChangedMatchRule =
-  matchAny
-  { matchSender = Just "org.freedesktop"
-  , matchMember = Just "NameOwnerChanged"
-  }
 
 data ItemEntry = ItemEntry
   { serviceName :: String }
@@ -32,30 +29,40 @@ data WatcherParams = WatcherParams
   , watcherPath :: String
   , watcherLogger :: String -> IO ()
   , watcherStop :: IO ()
-  , watcherClient :: Maybe Client
+  , watcherDBusClient :: Maybe Client
   }
 
+defaultWatcherParams :: WatcherParams
 defaultWatcherParams =
   WatcherParams
   { watcherNamespace = "org.freedesktop"
   , watcherLogger = putStrLn
   , watcherStop = return ()
   , watcherPath = "/StatusNotifierWatcher"
-  , watcherClient = Nothing
+  , watcherDBusClient = Nothing
   }
 
-startWatcher WatcherParams
+nameOwnerChangedMatchRule :: MatchRule
+nameOwnerChangedMatchRule =
+  matchAny
+  { matchSender = Just "org.freedesktop"
+  , matchMember = Just "NameOwnerChanged"
+  }
+
+getWatcherInterfaceName :: String -> InterfaceName
+getWatcherInterfaceName interfaceNamespace =
+  fromString $ printf "%s.%s" interfaceNamespace statusNotifierWatcherString
+
+buildWatcher WatcherParams
                { watcherNamespace = interfaceNamespace
                , watcherLogger = log
                , watcherStop = stopWatcher
                , watcherPath = path
-               , watcherClient = mclient
+               , watcherDBusClient = mclient
                } = do
-  let watcherInterfaceName =
-        fromString $ printf "%s.%s" interfaceNamespace statusNotifierWatcherString
+  let watcherInterfaceName = getWatcherInterfaceName interfaceNamespace
 
   client <- maybe connectSession return mclient
-  nameRequestResult <- requestName client (coerce watcherInterfaceName) []
 
   notifierItems <- newMVar []
   notifierHosts <- newMVar []
@@ -111,11 +118,11 @@ startWatcher WatcherParams
 
       handleNameOwnerChanged signal =
         case map fromVariant $ signalBody signal of
-          [(Just name), (Just oldOwner), (Just newOwner)] ->
+          [Just name, Just oldOwner, Just newOwner] ->
             when (newOwner == "") $
                  do
                    removedItems <- filterDeadService name notifierItems
-                   when (not $ null removedItems) $
+                   unless (null removedItems) $
                         emitFromWatcher "StatusNotifierItemUnregistered" name
                    removedHosts <- filterDeadService name notifierHosts
                    return ()
@@ -141,11 +148,21 @@ startWatcher WatcherParams
         , interfaceSignals = []
         }
 
-  case nameRequestResult of
-    NamePrimaryOwner ->
-      do
-        _ <- addMatch client nameOwnerChangedMatchRule handleNameOwnerChanged
-        export client (fromString path) watcherInterface
-    _ -> stopWatcher
+      startWatcher = do
+        nameRequestResult <- requestName client (coerce watcherInterfaceName) []
+        case nameRequestResult of
+          NamePrimaryOwner ->
+            do
+              _ <- addMatch client nameOwnerChangedMatchRule handleNameOwnerChanged
+              export client (fromString path) watcherInterface
+          _ -> stopWatcher
+        return nameRequestResult
 
-  return nameRequestResult
+  return (watcherInterface, startWatcher)
+
+--For Client generation
+watcherInterface = buildIntrospectionInterface clientInterface
+  where (clientInterface, _) = unsafePerformIO $ buildWatcher
+                               defaultWatcherParams { watcherDBusClient = Just $ Client {}}
+
+watcherClientGenerationParams = defaultGenerationParams
