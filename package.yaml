@@ -22,9 +22,18 @@ library:
 
 executables:
   status-notifier-watcher:
-    source-dirs: .
+    source-dirs: ./watcher
     dependencies:
       - base >= 4.7 && < 5
+      - dbus > 1.0
       - status-notifier-item-tray
       - optparse-applicative
-    main: WatcherMain.hs
+    main: Main.hs
+  sni-cl-tool:
+    source-dirs: ./tool
+    dependencies:
+      - base >= 4.7 && < 5
+      - dbus > 1.0
+      - status-notifier-item-tray
+      - optparse-applicative
+    main: Main.hs

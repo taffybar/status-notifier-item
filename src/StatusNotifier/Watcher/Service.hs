@@ -35,7 +35,7 @@ data WatcherParams = WatcherParams
 defaultWatcherParams :: WatcherParams
 defaultWatcherParams =
   WatcherParams
-  { watcherNamespace = "org.freedesktop"
+  { watcherNamespace = "org.kde"
   , watcherLogger = putStrLn
   , watcherStop = return ()
   , watcherPath = "/StatusNotifierWatcher"
@@ -107,7 +107,9 @@ buildWatcher WatcherParams
               emit client watcherSignal { signalMember = "StatusNotifierHostRegistered" }
               return $ ItemEntry { serviceName = name } : currentHosts
 
-      registeredStatusNotifierItems = map serviceName <$> readMVar notifierItems
+      registeredStatusNotifierItems =
+        log "Registered items requested" >>
+        map serviceName <$> readMVar notifierItems
 
       isStatusNotifierHostRegistered = not . null <$> readMVar notifierHosts
 
