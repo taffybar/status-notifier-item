@@ -1,6 +1,6 @@
-name:                status-notifier-item-tray
+name:                status-notifier-item
 version:             0.1.0.0
-github:              "IvanMalison/status-notifier-item-tray"
+github:              "IvanMalison/status-notifier-item"
 license:             BSD3
 author:              "Ivan Malison"
 maintainer:          "IvanMalison@gmail.com"
@@ -10,7 +10,7 @@ extra-source-files:
 - README.md
 - ChangeLog.md
 
-description: Please see the README on Github at <https://github.com/IvanMalison/status-notifier-item-tray#readme>
+description: Please see the README on Github at <https://github.com/IvanMalison/status-notifier-item#readme>
 
 library:
   source-dirs: src
@@ -26,7 +26,7 @@ executables:
     dependencies:
       - base >= 4.7 && < 5
       - dbus > 1.0
-      - status-notifier-item-tray
+      - status-notifier-item
       - optparse-applicative
     main: Main.hs
   sni-cl-tool:
@@ -34,6 +34,6 @@ executables:
     dependencies:
       - base >= 4.7 && < 5
       - dbus > 1.0
-      - status-notifier-item-tray
+      - status-notifier-item
       - optparse-applicative
     main: Main.hs

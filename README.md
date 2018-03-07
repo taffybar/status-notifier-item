@@ -1,1 +1,1 @@
-# status-notifier-item-trayy
+# status-notifier-item

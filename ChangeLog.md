@@ -1,3 +1,3 @@
-# Changelog for status-notifier-item-tray
+# Changelog for status-notifier-item
 
 ## Unreleased changes
