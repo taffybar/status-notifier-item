@@ -3,6 +3,7 @@ module Main where
 import Control.Concurrent.MVar
 import Data.Semigroup ((<>))
 import Options.Applicative
+import StatusNotifier.Watcher.Constants
 import StatusNotifier.Watcher.Service
 
 setWatcherParams namespace path =

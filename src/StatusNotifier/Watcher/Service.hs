@@ -8,6 +8,7 @@ import           DBus.Client
 import           DBus.Generate
 import           DBus.Internal.Message
 import           DBus.Internal.Types
+import qualified DBus.Internal.Types as T
 import qualified DBus.Introspection as I
 import           Data.Coerce
 import           Data.Int
@@ -15,32 +16,9 @@ import           Data.List
 import           Data.Maybe
 import           Data.String
 import           StatusNotifier.Util
+import           StatusNotifier.Watcher.Constants
+import           StatusNotifier.Watcher.Signals
 import           System.IO.Unsafe
-import           Text.Printf
-
-statusNotifierWatcherString :: String
-statusNotifierWatcherString = "StatusNotifierWatcher"
-
-data ItemEntry = ItemEntry
-  { serviceName :: String }
-
-data WatcherParams = WatcherParams
-  { watcherNamespace :: String
-  , watcherPath :: String
-  , watcherLogger :: String -> IO ()
-  , watcherStop :: IO ()
-  , watcherDBusClient :: Maybe Client
-  }
-
-defaultWatcherParams :: WatcherParams
-defaultWatcherParams =
-  WatcherParams
-  { watcherNamespace = "org.kde"
-  , watcherLogger = putStrLn
-  , watcherStop = return ()
-  , watcherPath = "/StatusNotifierWatcher"
-  , watcherDBusClient = Nothing
-  }
 
 nameOwnerChangedMatchRule :: MatchRule
 nameOwnerChangedMatchRule =
@@ -48,10 +26,6 @@ nameOwnerChangedMatchRule =
   { matchSender = Just "org.freedesktop"
   , matchMember = Just "NameOwnerChanged"
   }
-
-getWatcherInterfaceName :: String -> InterfaceName
-getWatcherInterfaceName interfaceNamespace =
-  fromString $ printf "%s.%s" interfaceNamespace statusNotifierWatcherString
 
 buildWatcher WatcherParams
                { watcherNamespace = interfaceNamespace
@@ -67,24 +41,7 @@ buildWatcher WatcherParams
   notifierItems <- newMVar []
   notifierHosts <- newMVar []
 
-  let watcherSignal =
-        Signal
-        { signalPath = fromString path
-        , signalInterface = watcherInterfaceName
-        , signalMember = ""
-        , signalSender = Nothing
-        , signalDestination = Nothing
-        , signalBody = []
-        }
-
-      emitFromWatcher signal name = do
-        log $ printf "Emitting %s with: [%s]" (show signal) name
-        emit client
-             watcherSignal { signalMember = signal
-                           , signalBody = [toVariant name]
-                           }
-
-      nameIsRegistered name items =
+  let nameIsRegistered name items =
         isJust $ find ((== name) . serviceName) items
 
       registerStatusNotifierItem name =
@@ -94,7 +51,7 @@ buildWatcher WatcherParams
             return currentItems
           else
             do
-              emitFromWatcher "StatusNotifierItemRegistered" name
+              emitStatusNotifierItemRegistered client name
               return $ ItemEntry { serviceName = name } : currentItems
 
       registerStatusNotifierHost name =
@@ -104,7 +61,7 @@ buildWatcher WatcherParams
             return currentHosts
           else
             do
-              emit client watcherSignal { signalMember = "StatusNotifierHostRegistered" }
+              emitStatusNotifierHostRegistered client
               return $ ItemEntry { serviceName = name } : currentHosts
 
       registeredStatusNotifierItems =
@@ -125,7 +82,7 @@ buildWatcher WatcherParams
                  do
                    removedItems <- filterDeadService name notifierItems
                    unless (null removedItems) $
-                        emitFromWatcher "StatusNotifierItemUnregistered" name
+                        emitStatusNotifierItemUnregistered client name
                    removedHosts <- filterDeadService name notifierHosts
                    return ()
           _ -> return ()
@@ -133,7 +90,7 @@ buildWatcher WatcherParams
       watcherMethods =
         [ autoMethod "RegisterStatusNotifierItem" registerStatusNotifierItem
         , autoMethod "RegisterStatusNotifierHost" registerStatusNotifierHost
-        , autoMethod "stopWatcher" stopWatcher
+        , autoMethod "StopWatcher" stopWatcher
         ]
 
       watcherProperties =
@@ -147,7 +104,7 @@ buildWatcher WatcherParams
         { interfaceName = watcherInterfaceName
         , interfaceMethods = watcherMethods
         , interfaceProperties = watcherProperties
-        , interfaceSignals = []
+        , interfaceSignals = watcherSignals
         }
 
       startWatcher = do
@@ -162,15 +119,8 @@ buildWatcher WatcherParams
 
   return (watcherInterface, startWatcher)
 
---For Client generation
+-- For Client generation
 {-# NOINLINE watcherInterface #-}
 watcherInterface = buildIntrospectionInterface clientInterface
   where (clientInterface, _) = unsafePerformIO $ buildWatcher
-                               defaultWatcherParams { watcherDBusClient = Just Client {}}
-
-watcherClientGenerationParams =
-  defaultGenerationParams
-  { genBusName = Just $ fromString $ coerce $ getWatcherInterfaceName
-                 (watcherNamespace defaultWatcherParams)
-  , genObjectPath = Just $ fromString $ watcherPath defaultWatcherParams
-  }
+                               defaultWatcherParams { watcherDBusClient = Just Client {} }

@@ -4,6 +4,7 @@ module StatusNotifier.Watcher.Client where
 import DBus.Generate
 import Language.Haskell.TH
 
+import StatusNotifier.Watcher.Constants
 import StatusNotifier.Watcher.Service
 
 generateClient watcherClientGenerationParams watcherInterface
