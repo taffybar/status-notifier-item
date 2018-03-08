@@ -9,7 +9,5 @@ main = do
   registeredItems <-
     getRegisteredStatusNotifierItems
       client
-      (fromString "org.kde.StatusNotifierWatcher")
-      (fromString "/StatusNotifierWatcher")
   print registeredItems
   return ()

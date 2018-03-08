@@ -163,8 +163,14 @@ buildWatcher WatcherParams
   return (watcherInterface, startWatcher)
 
 --For Client generation
+{-# NOINLINE watcherInterface #-}
 watcherInterface = buildIntrospectionInterface clientInterface
   where (clientInterface, _) = unsafePerformIO $ buildWatcher
-                               defaultWatcherParams { watcherDBusClient = Just $ Client {}}
+                               defaultWatcherParams { watcherDBusClient = Just Client {}}
 
-watcherClientGenerationParams = defaultGenerationParams
+watcherClientGenerationParams =
+  defaultGenerationParams
+  { genBusName = Just $ fromString $ coerce $ getWatcherInterfaceName
+                 (watcherNamespace defaultWatcherParams)
+  , genObjectPath = Just $ fromString $ watcherPath defaultWatcherParams
+  }
