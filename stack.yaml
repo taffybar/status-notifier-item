@@ -6,6 +6,3 @@ packages:
     git: https://github.com/IvanMalison/haskell-dbus
     commit: 6eeecf73a88aa580c91d10c6674539a87a1ad361
   extra-dep: true
-extra-deps:
-  - gtk3-0.14.8
-  - gio-0.13.4.1
