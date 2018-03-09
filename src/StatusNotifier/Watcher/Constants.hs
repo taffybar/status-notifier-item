@@ -2,7 +2,7 @@
 module StatusNotifier.Watcher.Constants where
 
 import           DBus.Client
-import           DBus.Generate
+import           DBus.Generation
 import           DBus.Internal.Types
 import qualified DBus.Introspection as I
 import           Data.Coerce
@@ -40,9 +40,9 @@ defaultWatcherParams =
 defaultWatcherInterfaceName =
   getWatcherInterfaceName $ watcherNamespace defaultWatcherParams
 
-serviceArg = I.SignalArg{ I.signalArgName = "service"
-                        , I.signalArgType = TypeString
-                        }
+serviceArg = I.SignalArg { I.signalArgName = "service"
+                         , I.signalArgType = TypeString
+                         }
 
 watcherSignals = [ I.Signal { I.signalName = "StatusNotifierItemRegistered"
                             , I.signalArgs = [serviceArg]

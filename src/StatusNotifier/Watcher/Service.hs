@@ -5,7 +5,7 @@ import           Control.Concurrent.MVar
 import           Control.Monad
 import           DBus
 import           DBus.Client
-import           DBus.Generate
+import           DBus.Generation
 import           DBus.Internal.Message
 import           DBus.Internal.Types
 import qualified DBus.Internal.Types as T
@@ -23,7 +23,7 @@ import           System.IO.Unsafe
 nameOwnerChangedMatchRule :: MatchRule
 nameOwnerChangedMatchRule =
   matchAny
-  { matchSender = Just "org.freedesktop"
+  { matchSender = Just "org.freedesktop.DBus"
   , matchMember = Just "NameOwnerChanged"
   }
 

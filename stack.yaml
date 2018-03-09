@@ -4,5 +4,5 @@ packages:
 - .
 - location:
     git: https://github.com/IvanMalison/haskell-dbus
-    commit: 46ca0fa92cf214162a8975efd8e67f9f17b472ac
+    commit: dc3a968d6f327312b7269b202bed24e47ae4cdb6
   extra-dep: true
