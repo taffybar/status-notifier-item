@@ -1,5 +1,11 @@
 module StatusNotifier.Util where
 
+import Paths_status_notifier_item ( getDataDir )
+import System.FilePath
+
+getXMLDataFile :: String -> IO FilePath
+getXMLDataFile filename = (</> filename) . (</> "xml") <$> getDataDir
+
 infixl 4 ??
 (??) :: Functor f => f (a -> b) -> a -> f b
 fab ?? a = fmap ($ a) fab

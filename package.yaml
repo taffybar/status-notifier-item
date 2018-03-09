@@ -6,6 +6,8 @@ author:              "Ivan Malison"
 maintainer:          "IvanMalison@gmail.com"
 copyright:           "2018 Ivan Malison"
 
+data-files: xml/*
+
 extra-source-files:
 - README.md
 - ChangeLog.md
