@@ -18,9 +18,13 @@ library:
   source-dirs: src
   dependencies:
     - base >= 4.7 && < 5
+    - containers
     - dbus > 1.0
-    - template-haskell
+    - hslogger
     - filepath
+    - mtl
+    - template-haskell
+    - vector
 
 executables:
   status-notifier-watcher:
