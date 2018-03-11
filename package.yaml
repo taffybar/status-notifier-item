@@ -6,11 +6,10 @@ author:              "Ivan Malison"
 maintainer:          "IvanMalison@gmail.com"
 copyright:           "2018 Ivan Malison"
 
-data-files: xml/*
-
 extra-source-files:
 - README.md
 - ChangeLog.md
+- xml/*
 
 description: Please see the README on Github at <https://github.com/IvanMalison/status-notifier-item#readme>
 
@@ -18,6 +17,7 @@ library:
   source-dirs: src
   dependencies:
     - base >= 4.7 && < 5
+    - bytestring
     - containers
     - dbus > 1.0
     - hslogger

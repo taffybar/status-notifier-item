@@ -14,7 +14,7 @@ import StatusNotifier.Util
 {-# NOINLINE introspectionObject #-}
 introspectionObject = unsafePerformIO $
   head . maybeToList . parseXML "/" <$>
-  (getXMLDataFile "StatusNotifierItem.xml" >>= readFile)
+  readFile "xml/StatusNotifierItem.xml"
 
 introspectionInterface =
   head $ objectInterfaces introspectionObject
@@ -22,5 +22,4 @@ introspectionInterface =
 generationParams =
   defaultGenerationParams
   { genObjectPath = Just $ objectPath introspectionObject
-  , getTHType = buildGetTHType (AppT $ ConT ''Vector) defaultGetDictType
   }

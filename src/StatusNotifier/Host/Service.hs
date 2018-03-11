@@ -9,11 +9,11 @@ import           Control.Monad.Except
 import           DBus
 import           DBus.Client
 import qualified DBus.Internal.Message as M
+import qualified Data.ByteString as BS
 import           Data.Either
 import           Data.Int
 import qualified Data.Map.Strict as Map
 import           Data.String
-import           Data.Vector (Vector)
 import           Data.Word
 import           System.IO.Unsafe
 import           System.Log.Logger
@@ -55,7 +55,7 @@ defaultParams = Params
 data ItemInfo = ItemInfo
   { itemServiceName :: BusName
   , iconName :: String
-  , iconPixmaps :: Vector (Int32, Int32, Vector Word8)
+  , iconPixmaps :: [(Int32, Int32, BS.ByteString)]
   }
 
 build Params { dbusClient = mclient
@@ -84,6 +84,7 @@ build Params { dbusClient = mclient
               logError (show error) >> shutdownHost >> return Map.empty
             finishInitialization serviceNames = do
               itemInfos <- createAll serviceNames
+              mapM_ (updateHandler NewItem) itemInfos
               let newMap = Map.fromList $ map (itemServiceName &&& id) itemInfos
                   -- Extra paranoia about the map
                   resultMap = if Map.null itemInfoMap then newMap else Map.union itemInfoMap newMap
@@ -131,9 +132,11 @@ build Params { dbusClient = mclient
         let busName = fromString name
             doGet fn = ExceptT $ fn client busName
         pixmaps <- doGet C.getIconPixmap
-        iconName <- doGet C.getIconName
+        -- SNI proxy does not have this property so well need to figure
+        -- something out here.
+        -- iconName <- doGet C.getIconName
         return $ ItemInfo { itemServiceName = busName_ name
                           , iconPixmaps = pixmaps
-                          , iconName = iconName
+                          -- , iconName = iconName
                           }
   return startup
