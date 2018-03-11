@@ -7,6 +7,8 @@ import           DBus.Internal.Types
 import qualified DBus.Introspection as I
 import           Data.Coerce
 import           Data.String
+import           System.IO.Unsafe
+import           System.Log.Logger
 import           Text.Printf
 
 statusNotifierWatcherString :: String
@@ -22,7 +24,7 @@ data ItemEntry = ItemEntry
 data WatcherParams = WatcherParams
   { watcherNamespace :: String
   , watcherPath :: String
-  , watcherLogger :: String -> IO ()
+  , watcherLogger :: Logger
   , watcherStop :: IO ()
   , watcherDBusClient :: Maybe Client
   }
@@ -31,7 +33,7 @@ defaultWatcherParams :: WatcherParams
 defaultWatcherParams =
   WatcherParams
   { watcherNamespace = "org.kde"
-  , watcherLogger = putStrLn
+  , watcherLogger = unsafePerformIO $ getLogger "StatusNotifier.Watcher.Service"
   , watcherStop = return ()
   , watcherPath = "/StatusNotifierWatcher"
   , watcherDBusClient = Nothing

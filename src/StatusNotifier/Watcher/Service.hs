@@ -14,11 +14,13 @@ import           Data.Coerce
 import           Data.Int
 import           Data.List
 import           Data.Maybe
+import           Data.Monoid
 import           Data.String
 import           StatusNotifier.Util
 import           StatusNotifier.Watcher.Constants
 import           StatusNotifier.Watcher.Signals
 import           System.IO.Unsafe
+import           System.Log.Logger
 
 nameOwnerChangedMatchRule :: MatchRule
 nameOwnerChangedMatchRule =
@@ -29,12 +31,17 @@ nameOwnerChangedMatchRule =
 
 buildWatcher WatcherParams
                { watcherNamespace = interfaceNamespace
-               , watcherLogger = log
+               , watcherLogger = logger
                , watcherStop = stopWatcher
                , watcherPath = path
                , watcherDBusClient = mclient
                } = do
   let watcherInterfaceName = getWatcherInterfaceName interfaceNamespace
+      log = putStrLn -- logL logger INFO
+      mkLogCb cb msg = log (show msg) >> cb msg
+      mkLogMethod m = m { methodHandler = mkLogCb $ methodHandler m }
+      mkLogProperty name fn =
+        readOnlyProperty name $ log (coerce name ++ " Called") >> fn
 
   client <- maybe connectSession return mclient
 
@@ -44,15 +51,24 @@ buildWatcher WatcherParams
   let nameIsRegistered name items =
         isJust $ find ((== name) . serviceName) items
 
-      registerStatusNotifierItem name =
-        modifyMVar_ notifierItems $ \currentItems ->
-          if nameIsRegistered name currentItems
-          then
-            return currentItems
-          else
-            do
-              emitStatusNotifierItemRegistered client name
-              return $ ItemEntry { serviceName = name } : currentItems
+      registerStatusNotifierItem MethodCall { methodCallSender = sender } name =
+        let maybeBusName = getFirst $ mconcat $
+                           map First [parseBusName name
+                                     -- TODO: Support ayatana style paths as
+                                     -- argument here and parse bus name to get sender.
+                                     -- , sender
+                                     ]
+            continue (T.BusName busName) =
+              modifyMVar_ notifierItems $ \currentItems ->
+                if nameIsRegistered busName currentItems
+                then
+                  return currentItems
+                else
+                  do
+                    emitStatusNotifierItemRegistered client busName
+                    return $ ItemEntry { serviceName = busName } : currentItems
+        in
+          maybe (return ()) (void . continue) maybeBusName
 
       registerStatusNotifierHost name =
         modifyMVar_ notifierHosts $ \currentHosts ->
@@ -65,7 +81,6 @@ buildWatcher WatcherParams
               return $ ItemEntry { serviceName = name } : currentHosts
 
       registeredStatusNotifierItems =
-        log "Registered items requested" >>
         map serviceName <$> readMVar notifierItems
 
       isStatusNotifierHostRegistered = not . null <$> readMVar notifierHosts
@@ -87,16 +102,16 @@ buildWatcher WatcherParams
                    return ()
           _ -> return ()
 
-      watcherMethods =
-        [ autoMethod "RegisterStatusNotifierItem" registerStatusNotifierItem
+      watcherMethods = map mkLogMethod
+        [ autoMethodWithMsg "RegisterStatusNotifierItem" registerStatusNotifierItem
         , autoMethod "RegisterStatusNotifierHost" registerStatusNotifierHost
         , autoMethod "StopWatcher" stopWatcher
         ]
 
       watcherProperties =
-        [ readOnlyProperty "RegisteredStatusNotifierItems" registeredStatusNotifierItems
-        , readOnlyProperty "IsStatusNotifierHostRegistered" isStatusNotifierHostRegistered
-        , readOnlyProperty "ProtocolVersion" protocolVersion
+        [ mkLogProperty "RegisteredStatusNotifierItems" registeredStatusNotifierItems
+        , mkLogProperty "IsStatusNotifierHostRegistered" isStatusNotifierHostRegistered
+        , mkLogProperty "ProtocolVersion" protocolVersion
         ]
 
       watcherInterface =
@@ -120,7 +135,9 @@ buildWatcher WatcherParams
   return (watcherInterface, startWatcher)
 
 -- For Client generation
+-- TODO: get rid of unsafePerformIO here by making function that takes mvars so
+-- IO isn't needed to build watcher
 {-# NOINLINE watcherInterface #-}
 watcherInterface = buildIntrospectionInterface clientInterface
   where (clientInterface, _) = unsafePerformIO $ buildWatcher
-                               defaultWatcherParams { watcherDBusClient = Just Client {} }
+                               defaultWatcherParams { watcherDBusClient = Just undefined }

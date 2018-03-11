@@ -11,3 +11,7 @@ generateSignalsFromInterface C.generationParams C.introspectionInterface
 printItemClient =
   runQ (generateClient C.generationParams C.introspectionInterface) >>=
        putStrLn . pprint
+
+printItemSignals =
+  runQ (generateSignalsFromInterface C.generationParams C.introspectionInterface) >>=
+       putStrLn . pprint
