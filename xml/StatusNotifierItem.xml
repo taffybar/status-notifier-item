@@ -27,10 +27,8 @@
         <property name="AttentionIconPixmap" type="a(iiay)" access="read" />
 
         <!-- tooltip data -->
-        <!-- unimplemented as of now -->
         <!--(iiay) is an image-->
         <property name="ToolTip" type="(sa(iiay)ss)" access="read" />
-
 
         <!-- interaction: actually, we do not use them. -->
         <method name="Activate">

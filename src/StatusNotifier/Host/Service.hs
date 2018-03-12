@@ -75,7 +75,8 @@ defaultItemInfo =
 
 myNameLenses ''ItemInfo
 
-convertPixmapsToHostByteOrder :: [(Int32, Int32, BS.ByteString)] -> [(Int32, Int32, BS.ByteString)]
+convertPixmapsToHostByteOrder ::
+  [(Int32, Int32, BS.ByteString)] -> [(Int32, Int32, BS.ByteString)]
 convertPixmapsToHostByteOrder pixmapInfos =
   map (over _3 networkToSystemByteOrder) pixmapInfos
 
