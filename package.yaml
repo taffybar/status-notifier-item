@@ -20,9 +20,12 @@ library:
     - bytestring
     - containers
     - dbus > 1.0
-    - hslogger
     - filepath
+    - hslogger
+    - lens
     - mtl
+    - network
+    - spool
     - template-haskell
     - vector
 

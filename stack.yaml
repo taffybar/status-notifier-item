@@ -6,3 +6,5 @@ packages:
     git: https://github.com/IvanMalison/haskell-dbus
     commit: b3cea91c63c3534a6d479db22db01481c3b6a687
   extra-dep: true
+extra-deps:
+  - spool-0.1

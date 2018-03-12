@@ -5,7 +5,6 @@ module StatusNotifier.Item.Constants where
 import DBus.Generation
 import DBus.Introspection
 import Data.Maybe
-import Data.Vector (Vector)
 import Language.Haskell.TH
 import System.IO.Unsafe
 
