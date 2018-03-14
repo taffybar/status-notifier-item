@@ -54,7 +54,7 @@ defaultParams = Params
   { dbusClient = Nothing
   , uniqueIdentifier = ""
   , namespace = "org.kde"
-  , handleUpdate = (\_ _ -> return ())
+  , handleUpdate = \_ _ -> return ()
   , hostLogger = unsafePerformIO $ getLogger "StatusNotifier.Host.Service"
   }
 
@@ -77,8 +77,7 @@ makeLensesWithLSuffix ''ItemInfo
 
 convertPixmapsToHostByteOrder ::
   [(Int32, Int32, BS.ByteString)] -> [(Int32, Int32, BS.ByteString)]
-convertPixmapsToHostByteOrder pixmapInfos =
-  map (over _3 networkToSystemByteOrder) pixmapInfos
+convertPixmapsToHostByteOrder = map $ over _3 networkToSystemByteOrder
 
 build :: Params -> IO (IO RequestNameReply)
 build Params { dbusClient = mclient
@@ -117,10 +116,10 @@ build Params { dbusClient = mclient
         mapM_ (logError . show) errors
         return itemInfos
 
-      registerWithPairs pairs =
-        mapM (uncurry clientSignalRegister) pairs
-        where clientSignalRegister signalRegisterFn handler =
-                signalRegisterFn client matchAny handler
+      registerWithPairs =
+        mapM (uncurry clientSignalRegister)
+        where clientSignalRegister signalRegisterFn =
+                signalRegisterFn client matchAny
 
       handleItemAdded _ serviceName =
         modifyMVar_ itemInfoMapVar $ \itemInfoMap ->
@@ -128,9 +127,9 @@ build Params { dbusClient = mclient
                         either (logErrorAndThen $ return itemInfoMap)
                                  (addItemInfo itemInfoMap)
           where addItemInfo map itemInfo = forkIO (updateHandler ItemAdded itemInfo) >>
-                  (return $ Map.insert (itemServiceName itemInfo) itemInfo map)
+                  return (Map.insert (itemServiceName itemInfo) itemInfo map)
 
-      handleItemRemoved _ serviceName = let busName = (busName_ serviceName) in
+      handleItemRemoved _ serviceName = let busName = busName_ serviceName in
         modifyMVar_ itemInfoMapVar (return . Map.delete busName ) >>
         doUpdate ItemRemoved defaultItemInfo { itemServiceName = busName }
 
@@ -148,8 +147,8 @@ build Params { dbusClient = mclient
       runUpdate lens updateType sender newValue =
         modifyMVar itemInfoMapVar modify >>= callUpdate
           where modify infoMap =
-                  let newMap = set (at sender . non (defaultItemInfo) . lens) newValue infoMap
-                  in return $ (newMap, Map.lookup sender newMap)
+                  let newMap = set (at sender . non defaultItemInfo . lens) newValue infoMap
+                  in return (newMap, Map.lookup sender newMap)
                 callUpdate = flip whenJust (doUpdate updateType)
 
       handleIconUpdated =

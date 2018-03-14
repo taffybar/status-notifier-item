@@ -21,6 +21,7 @@ import           StatusNotifier.Watcher.Constants
 import           StatusNotifier.Watcher.Signals
 import           System.IO.Unsafe
 import           System.Log.Logger
+import           Text.Printf
 
 nameOwnerChangedMatchRule :: MatchRule
 nameOwnerChangedMatchRule =
@@ -38,6 +39,7 @@ buildWatcher WatcherParams
                } = do
   let watcherInterfaceName = getWatcherInterfaceName interfaceNamespace
       log = putStrLn -- logL logger INFO
+      logError = putStrLn -- logL logger ERROR
       mkLogCb cb msg = log (show msg) >> cb msg
       mkLogMethod m = m { methodHandler = mkLogCb $ methodHandler m }
       mkLogProperty name fn =
@@ -52,7 +54,10 @@ buildWatcher WatcherParams
         isJust $ find ((== name) . serviceName) items
 
       registerStatusNotifierItem MethodCall { methodCallSender = sender } name =
-        let maybeBusName = getFirst $ mconcat $
+        let logRejection =
+              -- XXX: this should maybe be a warning
+              logError $ printf "Item registration for service %s rejected." name
+            maybeBusName = getFirst $ mconcat $
                            map First [parseBusName name
                                      -- TODO: Support ayatana style paths as
                                      -- argument here and parse bus name to get sender.
@@ -62,13 +67,13 @@ buildWatcher WatcherParams
               modifyMVar_ notifierItems $ \currentItems ->
                 if nameIsRegistered busName currentItems
                 then
-                  return currentItems
+                  logRejection >> return currentItems
                 else
                   do
                     emitStatusNotifierItemRegistered client busName
                     return $ ItemEntry { serviceName = busName } : currentItems
         in
-          maybe (return ()) (void . continue) maybeBusName
+          maybe logRejection (void . continue) maybeBusName
 
       registerStatusNotifierHost name =
         modifyMVar_ notifierHosts $ \currentHosts ->
