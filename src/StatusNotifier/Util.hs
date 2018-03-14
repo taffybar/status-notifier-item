@@ -21,7 +21,7 @@ ifM :: Monad m => m Bool -> m a -> m a -> m a
 ifM cond whenTrue whenFalse =
   cond >>= (\bool -> if bool then whenTrue else whenFalse)
 
-myNameLenses =
+makeLensesWithLSuffix =
   makeLensesWith $
   lensRules & lensField .~ \_ _ name ->
     [TopName (mkName $ nameBase name ++ "L")]

@@ -73,7 +73,7 @@ defaultItemInfo =
   , tooltip = ""
   }
 
-myNameLenses ''ItemInfo
+makeLensesWithLSuffix ''ItemInfo
 
 convertPixmapsToHostByteOrder ::
   [(Int32, Int32, BS.ByteString)] -> [(Int32, Int32, BS.ByteString)]
