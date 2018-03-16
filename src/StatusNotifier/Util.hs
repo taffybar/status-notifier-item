@@ -10,6 +10,10 @@ import           Language.Haskell.TH
 import           Network.Socket (ntohl)
 import           Paths_status_notifier_item ( getDataDir )
 import           System.FilePath
+import           System.IO
+import           System.Log.Handler.Simple
+import           System.Log.Logger
+import           System.IO.Unsafe
 
 getXMLDataFile :: String -> IO FilePath
 getXMLDataFile filename = (</> filename) . (</> "xml") <$> getDataDir
@@ -40,3 +44,12 @@ maybeToEither = flip maybe Right . Left
 
 makeErrorReply :: ErrorName -> String -> Reply
 makeErrorReply e message = ReplyError e [T.toVariant message]
+
+{-# NOINLINE defaultHandler #-}
+defaultHandler :: GenericHandler Handle
+defaultHandler = unsafePerformIO $ streamHandler stdout INFO
+
+{-# NOINLINE makeDefaultLogger #-}
+makeDefaultLogger :: String -> Logger
+makeDefaultLogger name =
+  setLevel INFO $ addHandler defaultHandler $ unsafePerformIO $ getLogger name

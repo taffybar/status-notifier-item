@@ -19,7 +19,6 @@ import           Data.Int
 import qualified Data.Map.Strict as Map
 import           Data.String
 import           Data.Word
-import           System.IO.Unsafe
 import           System.Log.Logger
 import           Text.Printf
 
@@ -55,7 +54,7 @@ defaultParams = Params
   , uniqueIdentifier = ""
   , namespace = "org.kde"
   , handleUpdate = \_ _ -> return ()
-  , hostLogger = unsafePerformIO $ getLogger "StatusNotifier.Host.Service"
+  , hostLogger = makeDefaultLogger "StatusNotifier.Watcher.Service"
   }
 
 data ItemInfo = ItemInfo

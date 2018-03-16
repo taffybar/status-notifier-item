@@ -7,9 +7,8 @@ import           DBus.Internal.Types
 import qualified DBus.Introspection as I
 import           Data.Coerce
 import           Data.String
-import           System.IO
+import           StatusNotifier.Util
 import           System.IO.Unsafe
-import           System.Log.Handler.Simple
 import           System.Log.Logger
 import           Text.Printf
 
@@ -33,20 +32,11 @@ data WatcherParams = WatcherParams
   , watcherDBusClient :: Maybe Client
   }
 
-{-# NOINLINE defaultHandler #-}
-defaultHandler :: GenericHandler Handle
-defaultHandler = unsafePerformIO $ streamHandler stdout INFO
-
-{-# NOINLINE defaultLogger #-}
-defaultLogger :: Logger
-defaultLogger = setLevel INFO $ addHandler defaultHandler $
-  unsafePerformIO $ getLogger "StatusNotifier.Watcher.Service"
-
 defaultWatcherParams :: WatcherParams
 defaultWatcherParams =
   WatcherParams
   { watcherNamespace = "org.kde"
-  , watcherLogger = defaultLogger
+  , watcherLogger = makeDefaultLogger "StatusNotifier.Watcher.Service"
   , watcherStop = return ()
   , watcherPath = "/StatusNotifierWatcher"
   , watcherDBusClient = Nothing
