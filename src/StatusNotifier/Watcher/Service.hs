@@ -43,8 +43,8 @@ buildWatcher WatcherParams
                , watcherDBusClient = mclient
                } = do
   let watcherInterfaceName = getWatcherInterfaceName interfaceNamespace
-      log = putStrLn -- logL logger INFO
-      logError = putStrLn -- logL logger ERROR
+      log = logL logger INFO
+      logError = logL logger ERROR
       mkLogCb cb msg = log (show msg) >> cb msg
       mkLogMethod m = m { methodHandler = mkLogCb $ methodHandler m }
       mkLogProperty name fn =
