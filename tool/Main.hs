@@ -7,7 +7,7 @@ import Data.String
 main = do
   client <- connectSession
   registeredItems <-
-    getRegisteredStatusNotifierItems
+    getRegisteredSNIEntries
       client
   print registeredItems
   return ()

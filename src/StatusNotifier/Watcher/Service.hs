@@ -9,7 +9,7 @@ import           Control.Monad.Trans.Except
 import           DBus
 import           DBus.Client
 import           DBus.Generation
-import           DBus.Internal.Message
+import           DBus.Internal.Message as M
 import           DBus.Internal.Types
 import qualified DBus.Internal.Types as T
 import qualified DBus.Introspection as I
@@ -57,14 +57,15 @@ buildWatcher WatcherParams
             parseServiceError = makeErrorReply errorInvalidParameters $
               printf "the provided service %s could not be parsed \
                      \as a bus name or an object path." name
-            remapErrorName = left (flip makeErrorReply "Failed to verify ownership.")
             path = fromMaybe Item.defaultPath $ T.parseObjectPath name
+            remapErrorName =
+              left $ (`makeErrorReply` "Failed to verify ownership.") .
+                   M.methodErrorName
         busName <- ExceptT $ return $ maybeToEither parseServiceError maybeBusName
         let item = ItemEntry { serviceName = busName
                              , servicePath = path
                              }
-        hasOwner <- ExceptT $ remapErrorName <$>
-                    (DBusTH.nameHasOwner client $ coerce busName)
+        hasOwner <- ExceptT $ remapErrorName <$> (DBusTH.nameHasOwner client $ coerce busName)
         lift $ modifyMVar_ notifierItems $ \currentItems ->
           if itemIsRegistered item currentItems
           then
@@ -93,16 +94,25 @@ buildWatcher WatcherParams
 
       registeredSNIEntries :: IO [(String, String)]
       registeredSNIEntries =
-        map getTuple  <$> readMVar notifierItems
+        map getTuple <$> readMVar notifierItems
           where getTuple (ItemEntry bname path) = (coerce bname, coerce path)
+
+      objectPathForItem :: String -> IO (Either Reply String)
+      objectPathForItem name =
+        maybeToEither notFoundError .  fmap (coerce . servicePath) .
+                      find ((== busName_ name) . serviceName) <$>
+                      readMVar notifierItems
+        where notFoundError =
+                makeErrorReply errorInvalidParameters $
+                printf "Service %s is not registered." name
 
       isStatusNotifierHostRegistered = not . null <$> readMVar notifierHosts
 
       protocolVersion = return 1 :: IO Int32
 
       filterDeadService :: String -> MVar [ItemEntry] -> IO [ItemEntry]
-      filterDeadService deadService mvar =
-        modifyMVar mvar $ return . partition ((/= (busName_ deadService)) . serviceName)
+      filterDeadService deadService mvar = modifyMVar mvar $
+        return . partition ((/= busName_ deadService) . serviceName)
 
       handleNameOwnerChanged _ name oldOwner newOwner =
         when (newOwner == "") $ do
@@ -119,6 +129,7 @@ buildWatcher WatcherParams
         [ autoMethodWithMsg "RegisterStatusNotifierItem" registerStatusNotifierItem
         , autoMethod "RegisterStatusNotifierHost" registerStatusNotifierHost
         , autoMethod "StopWatcher" stopWatcher
+        , autoMethod "GetObjectPathForItemName" objectPathForItem
         ]
 
       watcherProperties =

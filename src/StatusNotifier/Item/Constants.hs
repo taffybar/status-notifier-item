@@ -21,6 +21,4 @@ introspectionInterface =
 defaultPath :: ObjectPath
 defaultPath = objectPath introspectionObject
 
-generationParams =
-  defaultGenerationParams
-  { genObjectPath = Just defaultPath }
+generationParams = defaultGenerationParams

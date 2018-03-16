@@ -17,12 +17,14 @@ import qualified Data.ByteString as BS
 import           Data.Either
 import           Data.Int
 import qualified Data.Map.Strict as Map
+import           Data.Maybe
 import           Data.String
 import           Data.Word
 import           System.Log.Logger
 import           Text.Printf
 
-import qualified StatusNotifier.Item.Client as C
+import qualified StatusNotifier.Item.Constants as I
+import qualified StatusNotifier.Item.Client as I
 import           StatusNotifier.Util
 import qualified StatusNotifier.Watcher.Client as W
 import qualified StatusNotifier.Watcher.Signals as W
@@ -59,17 +61,21 @@ defaultParams = Params
 
 data ItemInfo = ItemInfo
   { itemServiceName :: BusName
+  , itemServicePath :: ObjectPath
   , iconName :: String
+  , iconThemePath :: String
   , iconPixmaps :: [(Int32, Int32, BS.ByteString)]
-  , tooltip :: String
+  , menuPath :: ObjectPath
   } deriving (Eq, Show)
 
 defaultItemInfo =
   ItemInfo
   { itemServiceName = ""
+  , itemServicePath = ""
+  , iconThemePath = ""
   , iconName = ""
   , iconPixmaps = []
-  , tooltip = ""
+  , menuPath = "/"
   }
 
 makeLensesWithLSuffix ''ItemInfo
@@ -77,6 +83,10 @@ makeLensesWithLSuffix ''ItemInfo
 convertPixmapsToHostByteOrder ::
   [(Int32, Int32, BS.ByteString)] -> [(Int32, Int32, BS.ByteString)]
 convertPixmapsToHostByteOrder = map $ over _3 networkToSystemByteOrder
+
+callFromInfo fn ItemInfo { itemServiceName = name
+                         , itemServicePath = path
+                         } = fn name path
 
 build :: Params -> IO (IO RequestNameReply)
 build Params { dbusClient = mclient
@@ -90,29 +100,37 @@ build Params { dbusClient = mclient
   let busName = getBusName namespaceString uniqueID
 
       logError = logL logger ERROR
+      logErrorM message error = logError message >> (logError $ show error)
       logInfo = logL logger INFO
       logErrorAndThen andThen e = logError (show e) >> andThen
 
       doUpdate utype uinfo = void $ forkIO $ updateHandler utype uinfo
 
-      getPixmaps a1 a2 = fmap convertPixmapsToHostByteOrder <$> C.getIconPixmap a1 a2
+      getPixmaps a1 a2 a3 = fmap convertPixmapsToHostByteOrder <$> I.getIconPixmap a1 a2 a3
 
       buildItemInfo name = runExceptT $ do
+        pathString <- ExceptT $ W.getObjectPathForItemName client name
         let busName = fromString name
-            doGet fn = ExceptT $ fn client busName
-        pixmaps <- doGet getPixmaps
-        -- SNI proxy does not have this property so well need to figure
-        -- something out here.
-        -- iconName <- doGet C.getIconName
-        return $ defaultItemInfo
+            path = objectPath_ pathString
+            doGetDef def fn =
+              ExceptT $ (exemptUnknownMethod def) <$> fn client busName path
+            doGet fn = ExceptT $ fn client busName path
+        pixmaps <- doGetDef [] getPixmaps
+        iName <- doGetDef name I.getIconName
+        themePath <- doGetDef "" I.getIconThemePath
+        menu <- doGetDef path I.getMenu
+        return ItemInfo
                  { itemServiceName = busName_ name
+                 , itemServicePath = path
                  , iconPixmaps = pixmaps
-                 -- , iconName = iconName
+                 , iconThemePath = themePath
+                 , iconName = iName
+                 , menuPath = menu
                  }
 
       createAll serviceNames = do
         (errors, itemInfos) <- partitionEithers <$> mapM buildItemInfo serviceNames
-        mapM_ (logError . show) errors
+        mapM_ (logErrorM "Error in item building at startup:") errors
         return itemInfos
 
       registerWithPairs =
@@ -128,6 +146,9 @@ build Params { dbusClient = mclient
           where addItemInfo map itemInfo = forkIO (updateHandler ItemAdded itemInfo) >>
                   return (Map.insert (itemServiceName itemInfo) itemInfo map)
 
+      getObjectPathForItemName name = (fromMaybe I.defaultPath) .
+        (fmap itemServicePath) . Map.lookup name <$> readMVar itemInfoMapVar
+
       handleItemRemoved _ serviceName = let busName = busName_ serviceName in
         modifyMVar_ itemInfoMapVar (return . Map.delete busName ) >>
         doUpdate ItemRemoved defaultItemInfo { itemServiceName = busName }
@@ -142,7 +163,11 @@ build Params { dbusClient = mclient
 
       makeUpdaterFromProp lens updateType prop = getSender run
         where run sender =
-                prop client sender >>= either (logError . show) (runUpdate lens updateType sender)
+                getObjectPathForItemName sender >>=
+                prop client sender >>=
+                either (logErrorM "Error updating property:")
+                       (runUpdate lens updateType sender)
+
       runUpdate lens updateType sender newValue =
         modifyMVar itemInfoMapVar modify >>= callUpdate
           where modify infoMap =
@@ -153,14 +178,11 @@ build Params { dbusClient = mclient
       handleIconUpdated =
         makeUpdaterFromProp iconPixmapsL IconUpdated getPixmaps
       handleTitleUpdated =
-        makeUpdaterFromProp iconNameL NameUpdated C.getIconName
-      -- TODO: Tooltip type is complicated because it can have an embedded image
-      -- handleTooltipUpdated =
-      --   makeUpdaterFromProp tooltipL TooltipUpdated C.getTooltip
+        makeUpdaterFromProp iconNameL NameUpdated I.getIconName
 
       clientRegistrationPairs =
-        [ (C.registerForNewTitle, handleTitleUpdated)
-        , (C.registerForNewIcon, handleIconUpdated)
+        [ (I.registerForNewTitle, handleTitleUpdated)
+        , (I.registerForNewIcon, handleIconUpdated)
         ]
 
       initializeItemInfoMap = modifyMVar_ itemInfoMapVar $ \itemInfoMap -> do

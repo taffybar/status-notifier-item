@@ -2,6 +2,7 @@ module StatusNotifier.Util where
 
 import           Control.Lens
 import           DBus.Client
+import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
 import qualified Data.ByteString as BS
 import qualified Data.Vector.Storable as VS
@@ -11,9 +12,9 @@ import           Network.Socket (ntohl)
 import           Paths_status_notifier_item ( getDataDir )
 import           System.FilePath
 import           System.IO
+import           System.IO.Unsafe
 import           System.Log.Handler.Simple
 import           System.Log.Logger
-import           System.IO.Unsafe
 
 getXMLDataFile :: String -> IO FilePath
 getXMLDataFile filename = (</> filename) . (</> "xml") <$> getDataDir
@@ -53,3 +54,13 @@ defaultHandler = unsafePerformIO $ streamHandler stdout INFO
 makeDefaultLogger :: String -> Logger
 makeDefaultLogger name =
   setLevel INFO $ addHandler defaultHandler $ unsafePerformIO $ getLogger name
+
+exemptUnknownMethod ::
+  b -> Either M.MethodError b -> Either M.MethodError b
+exemptUnknownMethod def eitherV =
+  case eitherV of
+    Right _ -> eitherV
+    Left M.MethodError { M.methodErrorName = errorName } ->
+      if errorName == errorUnknownMethod
+      then Right def
+      else eitherV
