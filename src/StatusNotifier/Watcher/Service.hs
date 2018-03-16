@@ -28,13 +28,6 @@ import           System.IO.Unsafe
 import           System.Log.Logger
 import           Text.Printf
 
-nameOwnerChangedMatchRule :: MatchRule
-nameOwnerChangedMatchRule =
-  matchAny
-  { matchSender = Just "org.freedesktop.DBus"
-  , matchMember = Just "NameOwnerChanged"
-  }
-
 buildWatcher WatcherParams
                { watcherNamespace = interfaceNamespace
                , watcherLogger = logger
@@ -111,17 +104,16 @@ buildWatcher WatcherParams
       filterDeadService deadService mvar =
         modifyMVar mvar $ return . partition ((/= (busName_ deadService)) . serviceName)
 
-      handleNameOwnerChanged signal =
-        case map fromVariant $ signalBody signal of
-          [Just name, Just oldOwner, Just newOwner] ->
-            when (newOwner == "") $
-                 do
-                   removedItems <- filterDeadService name notifierItems
-                   unless (null removedItems) $
-                        emitStatusNotifierItemUnregistered client name
-                   removedHosts <- filterDeadService name notifierHosts
-                   return ()
-          _ -> return ()
+      handleNameOwnerChanged _ name oldOwner newOwner =
+        when (newOwner == "") $ do
+          removedItems <- filterDeadService name notifierItems
+          unless (null removedItems) $ do
+            log $ printf "Unregistering item %s because it disappeared." name
+            emitStatusNotifierItemUnregistered client name
+          removedHosts <- filterDeadService name notifierHosts
+          unless (null removedHosts) $
+            log $ printf "Unregistering host %s because it disappeared." name
+          return ()
 
       watcherMethods = map mkLogMethod
         [ autoMethodWithMsg "RegisterStatusNotifierItem" registerStatusNotifierItem
@@ -149,7 +141,7 @@ buildWatcher WatcherParams
         case nameRequestResult of
           NamePrimaryOwner ->
             do
-              _ <- addMatch client nameOwnerChangedMatchRule handleNameOwnerChanged
+              _ <- DBusTH.registerForNameOwnerChanged client matchAny handleNameOwnerChanged
               export client (fromString path) watcherInterface
           _ -> stopWatcher
         return nameRequestResult
