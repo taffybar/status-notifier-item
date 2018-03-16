@@ -63,7 +63,7 @@ data ItemInfo = ItemInfo
   { itemServiceName :: BusName
   , itemServicePath :: ObjectPath
   , iconName :: String
-  , iconThemePath :: String
+  , iconThemePath :: Maybe String
   , iconPixmaps :: [(Int32, Int32, BS.ByteString)]
   , menuPath :: ObjectPath
   } deriving (Eq, Show)
@@ -72,7 +72,7 @@ defaultItemInfo =
   ItemInfo
   { itemServiceName = ""
   , itemServicePath = ""
-  , iconThemePath = ""
+  , iconThemePath = Nothing
   , iconName = ""
   , iconPixmaps = []
   , menuPath = "/"
@@ -112,12 +112,13 @@ build Params { dbusClient = mclient
         pathString <- ExceptT $ W.getObjectPathForItemName client name
         let busName = fromString name
             path = objectPath_ pathString
+            getThemePath a b c = (right Just <$> I.getIconThemePath a b c)
             doGetDef def fn =
-              ExceptT $ (exemptUnknownMethod def) <$> fn client busName path
+              ExceptT $ (exemptAll def) <$> fn client busName path
             doGet fn = ExceptT $ fn client busName path
         pixmaps <- doGetDef [] getPixmaps
         iName <- doGetDef name I.getIconName
-        themePath <- doGetDef "" I.getIconThemePath
+        themePath <- doGetDef Nothing getThemePath
         menu <- doGetDef path I.getMenu
         return ItemInfo
                  { itemServiceName = busName_ name

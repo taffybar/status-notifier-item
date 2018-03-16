@@ -64,3 +64,15 @@ exemptUnknownMethod def eitherV =
       if errorName == errorUnknownMethod
       then Right def
       else eitherV
+
+
+exemptAll ::
+  b -> Either M.MethodError b -> Either M.MethodError b
+exemptAll def eitherV =
+  case eitherV of
+    Right _ -> eitherV
+    Left _ -> Right def
+
+infixl 4 <..>
+(<..>) :: Functor f => (a -> b) -> f (f a) -> f (f b)
+(<..>) = fmap . fmap
