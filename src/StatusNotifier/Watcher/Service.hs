@@ -1,8 +1,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 module StatusNotifier.Watcher.Service where
 
+import           Control.Arrow
 import           Control.Concurrent.MVar
 import           Control.Monad
+import           Control.Monad.Trans
+import           Control.Monad.Trans.Except
 import           DBus
 import           DBus.Client
 import           DBus.Generation
@@ -10,12 +13,14 @@ import           DBus.Internal.Message
 import           DBus.Internal.Types
 import qualified DBus.Internal.Types as T
 import qualified DBus.Introspection as I
+import qualified DBus.TH as DBusTH
 import           Data.Coerce
 import           Data.Int
 import           Data.List
 import           Data.Maybe
 import           Data.Monoid
 import           Data.String
+import qualified StatusNotifier.Item.Constants as Item
 import           StatusNotifier.Util
 import           StatusNotifier.Watcher.Constants
 import           StatusNotifier.Watcher.Signals
@@ -50,50 +55,61 @@ buildWatcher WatcherParams
   notifierItems <- newMVar []
   notifierHosts <- newMVar []
 
-  let nameIsRegistered name items =
-        isJust $ find ((== name) . serviceName) items
+  let itemIsRegistered item items =
+        isJust $ find (== item) items
 
-      registerStatusNotifierItem MethodCall { methodCallSender = sender } name =
-        let logRejection =
-              -- XXX: this should maybe be a warning
-              logError $ printf "Item registration for service %s rejected." name
-            maybeBusName = getFirst $ mconcat $
-                           map First [parseBusName name
-                                     -- TODO: Support ayatana style paths as
-                                     -- argument here and parse bus name to get sender.
-                                     -- , sender
-                                     ]
-            continue (T.BusName busName) =
-              modifyMVar_ notifierItems $ \currentItems ->
-                if nameIsRegistered busName currentItems
-                then
-                  logRejection >> return currentItems
-                else
-                  do
-                    emitStatusNotifierItemRegistered client busName
-                    return $ ItemEntry { serviceName = busName } : currentItems
-        in
-          maybe logRejection (void . continue) maybeBusName
+      registerStatusNotifierItem MethodCall { methodCallSender = sender } name = runExceptT $ do
+        let maybeBusName = getFirst $ mconcat $
+                           map First [T.parseBusName name, sender]
+            parseServiceError = makeErrorReply errorInvalidParameters $
+              printf "the provided service %s could not be parsed \
+                     \as a bus name or an object path." name
+            remapErrorName = left (flip makeErrorReply "Failed to verify ownership.")
+            path = fromMaybe Item.defaultPath $ T.parseObjectPath name
+        busName <- ExceptT $ return $ maybeToEither parseServiceError maybeBusName
+        let item = ItemEntry { serviceName = busName
+                             , servicePath = path
+                             }
+        hasOwner <- ExceptT $ remapErrorName <$>
+                    (DBusTH.nameHasOwner client $ coerce busName)
+        lift $ modifyMVar_ notifierItems $ \currentItems ->
+          if itemIsRegistered item currentItems
+          then
+            return currentItems
+          else
+            do
+              emitStatusNotifierItemRegistered client $ coerce busName
+              return $ item : currentItems
 
       registerStatusNotifierHost name =
+        let item = ItemEntry { serviceName = busName_ name
+                             , servicePath = "/StatusNotifierHost"
+                             } in
         modifyMVar_ notifierHosts $ \currentHosts ->
-          if nameIsRegistered name currentHosts
+          if itemIsRegistered item currentHosts
           then
             return currentHosts
           else
             do
               emitStatusNotifierHostRegistered client
-              return $ ItemEntry { serviceName = name } : currentHosts
+              return $ item : currentHosts
 
+      registeredStatusNotifierItems :: IO [String]
       registeredStatusNotifierItems =
-        map serviceName <$> readMVar notifierItems
+        map (coerce . serviceName) <$> readMVar notifierItems
+
+      registeredSNIEntries :: IO [(String, String)]
+      registeredSNIEntries =
+        map getTuple  <$> readMVar notifierItems
+          where getTuple (ItemEntry bname path) = (coerce bname, coerce path)
 
       isStatusNotifierHostRegistered = not . null <$> readMVar notifierHosts
 
       protocolVersion = return 1 :: IO Int32
 
+      filterDeadService :: String -> MVar [ItemEntry] -> IO [ItemEntry]
       filterDeadService deadService mvar =
-        modifyMVar mvar $ return . partition ((/= deadService) . serviceName)
+        modifyMVar mvar $ return . partition ((/= (busName_ deadService)) . serviceName)
 
       handleNameOwnerChanged signal =
         case map fromVariant $ signalBody signal of
@@ -115,6 +131,7 @@ buildWatcher WatcherParams
 
       watcherProperties =
         [ mkLogProperty "RegisteredStatusNotifierItems" registeredStatusNotifierItems
+        , mkLogProperty "RegisteredSNIEntries" registeredSNIEntries
         , mkLogProperty "IsStatusNotifierHostRegistered" isStatusNotifierHostRegistered
         , mkLogProperty "ProtocolVersion" protocolVersion
         ]

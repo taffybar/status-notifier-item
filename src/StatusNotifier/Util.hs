@@ -1,6 +1,8 @@
 module StatusNotifier.Util where
 
 import           Control.Lens
+import           DBus.Client
+import qualified DBus.Internal.Types as T
 import qualified Data.ByteString as BS
 import qualified Data.Vector.Storable as VS
 import           Data.Vector.Storable.ByteString
@@ -32,3 +34,9 @@ whenJust = flip $ maybe $ return ()
 networkToSystemByteOrder :: BS.ByteString -> BS.ByteString
 networkToSystemByteOrder original =
   vectorToByteString $ VS.map ntohl $ byteStringToVector original
+
+maybeToEither :: b -> Maybe a -> Either b a
+maybeToEither = flip maybe Right . Left
+
+makeErrorReply :: ErrorName -> String -> Reply
+makeErrorReply e message = ReplyError e [T.toVariant message]

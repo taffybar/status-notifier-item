@@ -3,6 +3,7 @@ module StatusNotifier.Item.Constants where
 
 import DBus.Generation
 import DBus.Introspection
+import DBus.Internal.Types
 import Data.Maybe
 import Language.Haskell.TH
 import System.IO.Unsafe
@@ -17,7 +18,9 @@ introspectionObject = unsafePerformIO $
 introspectionInterface =
   head $ objectInterfaces introspectionObject
 
+defaultPath :: ObjectPath
+defaultPath = objectPath introspectionObject
+
 generationParams =
   defaultGenerationParams
-  { genObjectPath = Just $ objectPath introspectionObject
-  }
+  { genObjectPath = Just defaultPath }

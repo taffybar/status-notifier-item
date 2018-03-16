@@ -19,7 +19,9 @@ getWatcherInterfaceName interfaceNamespace =
   fromString $ printf "%s.%s" interfaceNamespace statusNotifierWatcherString
 
 data ItemEntry = ItemEntry
-  { serviceName :: String }
+  { serviceName :: BusName
+  , servicePath :: ObjectPath
+  } deriving (Show, Eq)
 
 data WatcherParams = WatcherParams
   { watcherNamespace :: String

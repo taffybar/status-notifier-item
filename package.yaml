@@ -27,6 +27,7 @@ library:
     - network
     - spool
     - template-haskell
+    - transformers
     - vector
 
 executables:
