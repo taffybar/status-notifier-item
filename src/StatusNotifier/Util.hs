@@ -19,11 +19,6 @@ import           System.Log.Logger
 getXMLDataFile :: String -> IO FilePath
 getXMLDataFile filename = (</> filename) . (</> "xml") <$> getDataDir
 
-infixl 4 ??
-(??) :: Functor f => f (a -> b) -> a -> f b
-fab ?? a = fmap ($ a) fab
-{-# INLINE (??) #-}
-
 ifM :: Monad m => m Bool -> m a -> m a -> m a
 ifM cond whenTrue whenFalse =
   cond >>= (\bool -> if bool then whenTrue else whenFalse)
@@ -55,6 +50,9 @@ makeDefaultLogger :: String -> Logger
 makeDefaultLogger name =
   setLevel INFO $ addHandler defaultHandler $ unsafePerformIO $ getLogger name
 
+logErrorWithDefault logger def message =
+  either (\err -> (logL logger ERROR $ message ++ show err) >> return def) return
+
 exemptUnknownMethod ::
   b -> Either M.MethodError b -> Either M.MethodError b
 exemptUnknownMethod def eitherV =
@@ -64,7 +62,6 @@ exemptUnknownMethod def eitherV =
       if errorName == errorUnknownMethod
       then Right def
       else eitherV
-
 
 exemptAll ::
   b -> Either M.MethodError b -> Either M.MethodError b
