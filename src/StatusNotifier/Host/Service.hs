@@ -40,8 +40,8 @@ data UpdateType
   = ItemAdded
   | ItemRemoved
   | IconUpdated
-  | NameUpdated
-  | TooltipUpdated
+  | IconNameUpdated
+  | TooltipUpdated deriving (Eq, Show)
 
 data Params = Params
   { dbusClient :: Maybe Client
@@ -104,7 +104,10 @@ build Params { dbusClient = mclient
       logInfo = logL logger INFO
       logErrorAndThen andThen e = logError (show e) >> andThen
 
-      doUpdate utype uinfo = void $ forkIO $ updateHandler utype uinfo
+      doUpdate utype uinfo =
+        (logInfo (printf "Sending update: %s %s" (show utype)
+                           (show $ uinfo { iconPixmaps = [] }))) >>
+        (void $ forkIO $ updateHandler utype uinfo)
 
       getPixmaps a1 a2 a3 = fmap convertPixmapsToHostByteOrder <$> I.getIconPixmap a1 a2 a3
 
@@ -178,11 +181,11 @@ build Params { dbusClient = mclient
 
       handleIconUpdated =
         makeUpdaterFromProp iconPixmapsL IconUpdated getPixmaps
-      handleTitleUpdated =
-        makeUpdaterFromProp iconNameL NameUpdated I.getIconName
+      handleIconNameUpdated =
+        makeUpdaterFromProp iconNameL IconNameUpdated I.getIconName
 
       clientRegistrationPairs =
-        [ (I.registerForNewTitle, handleTitleUpdated)
+        [ (I.registerForNewTitle, handleIconNameUpdated)
         , (I.registerForNewIcon, handleIconUpdated)
         ]
 

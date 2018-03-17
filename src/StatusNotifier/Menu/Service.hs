@@ -82,7 +82,14 @@ getMenuEntries = runExceptT $ do
   let results = processMenuEntry rootEntry
   return $ Map.fromList results
 
-buildMenu logger = do
+data MenuParams = MenuParams
+  { menuLogger :: Logger
+  }
+
+defaultMenuParams =
+  MenuParams { menuLogger = makeDefaultLogger "StatusNotifier.Menu.Service" }
+
+buildMenu MenuParams { menuLogger = logger } = do
   info@(client, busName, path) <- ask
   menuEntriesMapVar <- lift $ newMVar Map.empty
 
