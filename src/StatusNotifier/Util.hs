@@ -48,10 +48,12 @@ defaultHandler = unsafePerformIO $ streamHandler stdout INFO
 {-# NOINLINE makeDefaultLogger #-}
 makeDefaultLogger :: String -> Logger
 makeDefaultLogger name =
-  setLevel INFO $ addHandler defaultHandler $ unsafePerformIO $ getLogger name
+  setLevel INFO $ unsafePerformIO $ getLogger name
 
+logErrorWithDefault ::
+  Show a => Logger -> b -> [Char] -> Either a b -> IO b
 logErrorWithDefault logger def message =
-  either (\err -> (logL logger ERROR $ message ++ show err) >> return def) return
+  either (\err -> logL logger ERROR (message ++ show err) >> return def) return
 
 exemptUnknownMethod ::
   b -> Either M.MethodError b -> Either M.MethodError b

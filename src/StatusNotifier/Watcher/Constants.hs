@@ -65,4 +65,5 @@ watcherClientGenerationParams =
   { genBusName = Just $ fromString $ coerce $ getWatcherInterfaceName
                  (watcherNamespace defaultWatcherParams)
   , genObjectPath = Just $ fromString $ watcherPath defaultWatcherParams
+  , genTakeSignalErrorHandler = True
   }

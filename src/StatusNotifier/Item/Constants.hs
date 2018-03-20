@@ -21,4 +21,6 @@ introspectionInterface =
 defaultPath :: ObjectPath
 defaultPath = objectPath introspectionObject
 
-generationParams = defaultGenerationParams
+generationParams =
+  defaultGenerationParams
+  { genTakeSignalErrorHandler = True }

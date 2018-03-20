@@ -5,6 +5,7 @@ import Data.Semigroup ((<>))
 import Options.Applicative
 import StatusNotifier.Watcher.Constants
 import StatusNotifier.Watcher.Service
+import System.Log.Logger
 
 setWatcherParams namespace path =
   defaultWatcherParams

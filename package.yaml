@@ -36,6 +36,7 @@ executables:
     dependencies:
       - base >= 4.7 && < 5
       - dbus > 1.0
+      - hslogger
       - status-notifier-item
       - optparse-applicative
     main: Main.hs

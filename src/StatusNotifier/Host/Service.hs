@@ -70,8 +70,8 @@ data ItemInfo = ItemInfo
 
 defaultItemInfo =
   ItemInfo
-  { itemServiceName = ""
-  , itemServicePath = ""
+  { itemServiceName = "a.b"
+  , itemServicePath = "/"
   , iconThemePath = Nothing
   , iconName = ""
   , iconPixmaps = []
@@ -100,14 +100,14 @@ build Params { dbusClient = mclient
   let busName = getBusName namespaceString uniqueID
 
       logError = logL logger ERROR
-      logErrorM message error = logError message >> (logError $ show error)
+      logErrorM message error = logError message >> logError (show error)
       logInfo = logL logger INFO
       logErrorAndThen andThen e = logError (show e) >> andThen
 
       doUpdate utype uinfo =
-        (logInfo (printf "Sending update: %s %s" (show utype)
-                           (show $ uinfo { iconPixmaps = [] }))) >>
-        (void $ forkIO $ updateHandler utype uinfo)
+        logInfo (printf "Sending update: %s %s" (show utype)
+                           (show $ uinfo { iconPixmaps = [] })) >>
+        void (forkIO (updateHandler utype uinfo))
 
       getPixmaps a1 a2 a3 = fmap convertPixmapsToHostByteOrder <$> I.getIconPixmap a1 a2 a3
 
@@ -115,9 +115,9 @@ build Params { dbusClient = mclient
         pathString <- ExceptT $ W.getObjectPathForItemName client name
         let busName = fromString name
             path = objectPath_ pathString
-            getThemePath a b c = (right Just <$> I.getIconThemePath a b c)
+            getThemePath a b c = right Just <$> I.getIconThemePath a b c
             doGetDef def fn =
-              ExceptT $ (exemptAll def) <$> fn client busName path
+              ExceptT $ exemptAll def <$> fn client busName path
             doGet fn = ExceptT $ fn client busName path
         pixmaps <- doGetDef [] getPixmaps
         iName <- doGetDef name I.getIconName
@@ -139,8 +139,10 @@ build Params { dbusClient = mclient
 
       registerWithPairs =
         mapM (uncurry clientSignalRegister)
-        where clientSignalRegister signalRegisterFn =
-                signalRegisterFn client matchAny
+        where logUnableToCallSignal signal =
+                logL logger ERROR $ printf "Unable to call handler with %s" $ show signal
+              clientSignalRegister signalRegisterFn handler =
+                signalRegisterFn client matchAny handler logUnableToCallSignal
 
       handleItemAdded _ serviceName =
         modifyMVar_ itemInfoMapVar $ \itemInfoMap ->
@@ -150,8 +152,8 @@ build Params { dbusClient = mclient
           where addItemInfo map itemInfo = forkIO (updateHandler ItemAdded itemInfo) >>
                   return (Map.insert (itemServiceName itemInfo) itemInfo map)
 
-      getObjectPathForItemName name = (fromMaybe I.defaultPath) .
-        (fmap itemServicePath) . Map.lookup name <$> readMVar itemInfoMapVar
+      getObjectPathForItemName name =
+        (maybe I.defaultPath itemServicePath . Map.lookup name) <$> readMVar itemInfoMapVar
 
       handleItemRemoved _ serviceName = let busName = busName_ serviceName in
         modifyMVar_ itemInfoMapVar (return . Map.delete busName ) >>
@@ -162,7 +164,8 @@ build Params { dbusClient = mclient
         , (W.registerForStatusNotifierItemUnregistered, handleItemRemoved)
         ]
 
-      getSender fn M.Signal { M.signalSender = Just sender} = fn sender
+      getSender fn s@M.Signal { M.signalSender = Just sender} =
+        logInfo (show s) >> fn sender
       getSender _ s = logError $ "Received signal with no sender:" ++ show s
 
       makeUpdaterFromProp lens updateType prop = getSender run
@@ -179,6 +182,7 @@ build Params { dbusClient = mclient
                   in return (newMap, Map.lookup sender newMap)
                 callUpdate = flip whenJust (doUpdate updateType)
 
+      -- These signals do not seem to work
       handleIconUpdated =
         makeUpdaterFromProp iconPixmapsL IconUpdated getPixmaps
       handleIconNameUpdated =

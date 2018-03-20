@@ -38,7 +38,7 @@ buildWatcher WatcherParams
   let watcherInterfaceName = getWatcherInterfaceName interfaceNamespace
       log = logL logger INFO
       logError = logL logger ERROR
-      mkLogCb cb msg = (lift $ log (show msg)) >> cb msg
+      mkLogCb cb msg = lift (log (show msg)) >> cb msg
       mkLogMethod method = method { methodHandler = mkLogCb $ methodHandler method }
       mkLogProperty name fn =
         readOnlyProperty name $ log (coerce name ++ " Called") >> fn
@@ -65,7 +65,7 @@ buildWatcher WatcherParams
         let item = ItemEntry { serviceName = busName
                              , servicePath = path
                              }
-        hasOwner <- ExceptT $ remapErrorName <$> (DBusTH.nameHasOwner client $ coerce busName)
+        hasOwner <- ExceptT $ remapErrorName <$> DBusTH.nameHasOwner client (coerce busName)
         lift $ modifyMVar_ notifierItems $ \currentItems ->
           if itemIsRegistered item currentItems
           then
