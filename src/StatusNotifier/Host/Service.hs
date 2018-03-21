@@ -105,11 +105,13 @@ build Params { dbusClient = mclient
       logErrorAndThen andThen e = logError (show e) >> andThen
 
       doUpdate utype uinfo =
-        logInfo (printf "Sending update: %s %s" (show utype)
-                           (show $ uinfo { iconPixmaps = [] })) >>
+        logInfo (printf "Sending update (iconPixmaps suppressed): %s %s"
+                          (show utype)
+                          (show $ uinfo { iconPixmaps = [] })) >>
         void (forkIO (updateHandler utype uinfo))
 
-      getPixmaps a1 a2 a3 = fmap convertPixmapsToHostByteOrder <$> I.getIconPixmap a1 a2 a3
+      getPixmaps a1 a2 a3 = fmap convertPixmapsToHostByteOrder <$>
+                            I.getIconPixmap a1 a2 a3
 
       buildItemInfo name = runExceptT $ do
         pathString <- ExceptT $ W.getObjectPathForItemName client name
@@ -133,14 +135,16 @@ build Params { dbusClient = mclient
                  }
 
       createAll serviceNames = do
-        (errors, itemInfos) <- partitionEithers <$> mapM buildItemInfo serviceNames
+        (errors, itemInfos) <-
+          partitionEithers <$> mapM buildItemInfo serviceNames
         mapM_ (logErrorM "Error in item building at startup:") errors
         return itemInfos
 
       registerWithPairs =
         mapM (uncurry clientSignalRegister)
         where logUnableToCallSignal signal =
-                logL logger ERROR $ printf "Unable to call handler with %s" $ show signal
+                logL logger ERROR $ printf "Unable to call handler with %s" $
+                     show signal
               clientSignalRegister signalRegisterFn handler =
                 signalRegisterFn client matchAny handler logUnableToCallSignal
 
@@ -149,11 +153,12 @@ build Params { dbusClient = mclient
           buildItemInfo serviceName >>=
                         either (logErrorAndThen $ return itemInfoMap)
                                  (addItemInfo itemInfoMap)
-          where addItemInfo map itemInfo = forkIO (updateHandler ItemAdded itemInfo) >>
+          where addItemInfo map itemInfo = doUpdate ItemAdded itemInfo >>
                   return (Map.insert (itemServiceName itemInfo) itemInfo map)
 
       getObjectPathForItemName name =
-        (maybe I.defaultPath itemServicePath . Map.lookup name) <$> readMVar itemInfoMapVar
+        (maybe I.defaultPath itemServicePath . Map.lookup name) <$>
+        readMVar itemInfoMapVar
 
       handleItemRemoved _ serviceName = let busName = busName_ serviceName in
         modifyMVar_ itemInfoMapVar (return . Map.delete busName ) >>
@@ -166,7 +171,7 @@ build Params { dbusClient = mclient
 
       getSender fn s@M.Signal { M.signalSender = Just sender} =
         logInfo (show s) >> fn sender
-      getSender _ s = logError $ "Received signal with no sender:" ++ show s
+      getSender _ s = logError $ "Received signal with no sender: " ++ show s
 
       makeUpdaterFromProp lens updateType prop = getSender run
         where run sender =
@@ -178,18 +183,18 @@ build Params { dbusClient = mclient
       runUpdate lens updateType sender newValue =
         modifyMVar itemInfoMapVar modify >>= callUpdate
           where modify infoMap =
-                  let newMap = set (at sender . non defaultItemInfo . lens) newValue infoMap
+                  let newMap = set (at sender . non defaultItemInfo . lens)
+                               newValue infoMap
                   in return (newMap, Map.lookup sender newMap)
                 callUpdate = flip whenJust (doUpdate updateType)
 
-      -- These signals do not seem to work
       handleIconUpdated =
         makeUpdaterFromProp iconPixmapsL IconUpdated getPixmaps
       handleIconNameUpdated =
-        makeUpdaterFromProp iconNameL IconNameUpdated I.getIconName
+        makeUpdaterFromProp iconNameL IconUpdated I.getIconName
 
       clientRegistrationPairs =
-        [ (I.registerForNewTitle, handleIconNameUpdated)
+        [ (I.registerForNewIcon, handleIconNameUpdated)
         , (I.registerForNewIcon, handleIconUpdated)
         ]
 
@@ -213,7 +218,9 @@ build Params { dbusClient = mclient
               mapM_ (doUpdate ItemAdded) itemInfos
               let newMap = Map.fromList $ map (itemServiceName &&& id) itemInfos
                   -- Extra paranoia about the map
-                  resultMap = if Map.null itemInfoMap then newMap else Map.union itemInfoMap newMap
+                  resultMap = if Map.null itemInfoMap
+                              then newMap
+                              else Map.union itemInfoMap newMap
               W.registerStatusNotifierHost client busName >>=
                either logErrorAndShutdown (const $ return resultMap)
         W.getRegisteredStatusNotifierItems client >>=
