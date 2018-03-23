@@ -65,7 +65,7 @@ data ItemInfo = ItemInfo
   , iconName :: String
   , iconThemePath :: Maybe String
   , iconPixmaps :: [(Int32, Int32, BS.ByteString)]
-  , menuPath :: ObjectPath
+  , menuPath :: Maybe ObjectPath
   } deriving (Eq, Show)
 
 defaultItemInfo =
@@ -75,7 +75,7 @@ defaultItemInfo =
   , iconThemePath = Nothing
   , iconName = ""
   , iconPixmaps = []
-  , menuPath = "/"
+  , menuPath = Nothing
   }
 
 makeLensesWithLSuffix ''ItemInfo
@@ -117,14 +117,14 @@ build Params { dbusClient = mclient
         pathString <- ExceptT $ W.getObjectPathForItemName client name
         let busName = fromString name
             path = objectPath_ pathString
-            getThemePath a b c = right Just <$> I.getIconThemePath a b c
+            getMaybe fn a b c = right Just <$> fn a b c
             doGetDef def fn =
               ExceptT $ exemptAll def <$> fn client busName path
             doGet fn = ExceptT $ fn client busName path
         pixmaps <- doGetDef [] getPixmaps
         iName <- doGetDef name I.getIconName
-        themePath <- doGetDef Nothing getThemePath
-        menu <- doGetDef path I.getMenu
+        themePath <- doGetDef Nothing $ getMaybe I.getIconThemePath
+        menu <- doGetDef Nothing $ getMaybe I.getMenu
         return ItemInfo
                  { itemServiceName = busName_ name
                  , itemServicePath = path
