@@ -194,8 +194,8 @@ build Params { dbusClient = mclient
         makeUpdaterFromProp iconNameL IconUpdated I.getIconName
 
       clientRegistrationPairs =
-        [ (I.registerForNewIcon, handleIconNameUpdated)
-        , (I.registerForNewIcon, handleIconUpdated)
+        [ (I.registerForNewIcon, handleIconUpdated)
+        -- , (I.registerForNewIcon, handleIconNameUpdated)
         ]
 
       initializeItemInfoMap = modifyMVar_ itemInfoMapVar $ \itemInfoMap -> do

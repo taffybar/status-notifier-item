@@ -1,5 +1,6 @@
 module StatusNotifier.Util where
 
+import           Control.Arrow
 import           Control.Lens
 import           DBus.Client
 import qualified DBus.Internal.Message as M
@@ -75,3 +76,20 @@ exemptAll def eitherV =
 infixl 4 <..>
 (<..>) :: Functor f => (a -> b) -> f (f a) -> f (f b)
 (<..>) = fmap . fmap
+
+infixl 4 <<$>>
+(<<$>>) :: (a -> IO b) -> Maybe a -> IO (Maybe b)
+fn <<$>> m = sequenceA $ fn <$> m
+
+forkM :: Monad m => (i -> m a) -> (i -> m b) -> i -> m (a, b)
+forkM a b i =
+  do
+    r1 <- a i
+    r2 <- b i
+    return (r1, r2)
+
+tee :: Monad m => (i -> m a) -> (i -> m b) -> i -> m a
+tee = (fmap . fmap . fmap) (fmap fst) forkM
+
+(>>=/) :: Monad m => m a -> (a -> m b) -> m a
+(>>=/) a = (a >>=) . tee return
