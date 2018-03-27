@@ -2,9 +2,5 @@ resolver: lts-10.7
 
 packages:
 - .
-- location:
-    git: https://github.com/IvanMalison/haskell-dbus
-    commit: be569d87fb594a1a2159152d13491762e93ba2b9
-  extra-dep: true
 extra-deps:
   - spool-0.1
