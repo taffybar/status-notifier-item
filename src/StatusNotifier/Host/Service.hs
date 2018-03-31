@@ -41,6 +41,7 @@ data UpdateType
   | ItemRemoved
   | IconUpdated
   | IconNameUpdated
+  | TitleUpdated
   | TooltipUpdated deriving (Eq, Show)
 
 data Params = Params
@@ -62,6 +63,7 @@ defaultParams = Params
 data ItemInfo = ItemInfo
   { itemServiceName :: BusName
   , itemServicePath :: ObjectPath
+  , iconTitle :: String
   , iconName :: String
   , iconThemePath :: Maybe String
   , iconPixmaps :: [(Int32, Int32, BS.ByteString)]
@@ -74,6 +76,7 @@ defaultItemInfo =
   , itemServicePath = "/"
   , iconThemePath = Nothing
   , iconName = ""
+  , iconTitle = ""
   , iconPixmaps = []
   , menuPath = Nothing
   }
@@ -125,12 +128,14 @@ build Params { dbusClient = mclient
         iName <- doGetDef name I.getIconName
         themePath <- doGetDef Nothing $ getMaybe I.getIconThemePath
         menu <- doGetDef Nothing $ getMaybe I.getMenu
+        title <- doGetDef "" I.getTitle
         return ItemInfo
                  { itemServiceName = busName_ name
                  , itemServicePath = path
                  , iconPixmaps = pixmaps
                  , iconThemePath = themePath
                  , iconName = iName
+                 , iconTitle = title
                  , menuPath = menu
                  }
 
@@ -157,7 +162,7 @@ build Params { dbusClient = mclient
                   return (Map.insert (itemServiceName itemInfo) itemInfo map)
 
       getObjectPathForItemName name =
-        (maybe I.defaultPath itemServicePath . Map.lookup name) <$>
+        maybe I.defaultPath itemServicePath . Map.lookup name <$>
         readMVar itemInfoMapVar
 
       handleItemRemoved _ serviceName = let busName = busName_ serviceName in
@@ -192,6 +197,8 @@ build Params { dbusClient = mclient
         makeUpdaterFromProp iconPixmapsL IconUpdated getPixmaps
       handleIconNameUpdated =
         makeUpdaterFromProp iconNameL IconUpdated I.getIconName
+      handleTitleUpdated =
+        makeUpdaterFromProp iconTitleL TitleUpdated I.getTitle
 
       clientRegistrationPairs =
         [ (I.registerForNewIcon, handleIconUpdated)
