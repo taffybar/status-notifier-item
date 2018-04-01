@@ -103,7 +103,7 @@ build Params { dbusClient = mclient
   let busName = getBusName namespaceString uniqueID
 
       logError = logL logger ERROR
-      logErrorM message error = logError message >> logError (show error)
+      logErrorWithMessage message error = logError message >> logError (show error)
       logInfo = logL logger INFO
       logErrorAndThen andThen e = logError (show e) >> andThen
 
@@ -142,7 +142,7 @@ build Params { dbusClient = mclient
       createAll serviceNames = do
         (errors, itemInfos) <-
           partitionEithers <$> mapM buildItemInfo serviceNames
-        mapM_ (logErrorM "Error in item building at startup:") errors
+        mapM_ (logErrorWithMessage "Error in item building at startup:") errors
         return itemInfos
 
       registerWithPairs =
@@ -178,12 +178,15 @@ build Params { dbusClient = mclient
         logInfo (show s) >> fn sender
       getSender _ s = logError $ "Received signal with no sender: " ++ show s
 
-      makeUpdaterFromProp lens updateType prop = getSender run
+      logPropError = logErrorWithMessage "Error updating property: "
+
+      makeUpdaterFromProp = makeUpdaterFromProp' logPropError
+
+      makeUpdaterFromProp' onError lens updateType prop = getSender run
         where run sender =
                 getObjectPathForItemName sender >>=
                 prop client sender >>=
-                either (logErrorM "Error updating property:")
-                       (runUpdate lens updateType sender)
+                either onError (runUpdate lens updateType sender)
 
       runUpdate lens updateType sender newValue =
         modifyMVar itemInfoMapVar modify >>= callUpdate
@@ -193,16 +196,18 @@ build Params { dbusClient = mclient
                   in return (newMap, Map.lookup sender newMap)
                 callUpdate = flip whenJust (doUpdate updateType)
 
-      handleIconUpdated =
+      updatePixmaps =
         makeUpdaterFromProp iconPixmapsL IconUpdated getPixmaps
-      handleIconNameUpdated =
-        makeUpdaterFromProp iconNameL IconUpdated I.getIconName
-      handleTitleUpdated =
+      handleNewIcon signal =
+        makeUpdaterFromProp'
+        (const $ updatePixmaps signal)
+        iconNameL IconNameUpdated I.getIconName signal
+      handleNewTitle =
         makeUpdaterFromProp iconTitleL TitleUpdated I.getTitle
 
       clientRegistrationPairs =
-        [ (I.registerForNewIcon, handleIconUpdated)
-        -- , (I.registerForNewIcon, handleIconNameUpdated)
+        [ (I.registerForNewIcon, handleNewIcon)
+        , (I.registerForNewTitle, handleNewTitle)
         ]
 
       initializeItemInfoMap = modifyMVar_ itemInfoMapVar $ \itemInfoMap -> do
