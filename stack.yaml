@@ -3,4 +3,5 @@ resolver: lts-10.7
 packages:
 - .
 extra-deps:
+  - dbus-1.0.0
   - spool-0.1

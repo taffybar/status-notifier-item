@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module StatusNotifier.Util where
 
 import           Control.Arrow
@@ -5,12 +6,14 @@ import           Control.Lens
 import           DBus.Client
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
+import qualified DBus.Introspection as I
 import qualified Data.ByteString as BS
 import qualified Data.Vector.Storable as VS
 import           Data.Vector.Storable.ByteString
 import           Language.Haskell.TH
 import           Network.Socket (ntohl)
 import           Paths_status_notifier_item ( getDataDir )
+import           StatusNotifier.TH
 import           System.FilePath
 import           System.IO
 import           System.IO.Unsafe
@@ -52,7 +55,7 @@ makeDefaultLogger name =
   setLevel INFO $ unsafePerformIO $ getLogger name
 
 logErrorWithDefault ::
-  Show a => Logger -> b -> [Char] -> Either a b -> IO b
+  Show a => Logger -> b -> String -> Either a b -> IO b
 logErrorWithDefault logger def message =
   either (\err -> logL logger ERROR (message ++ show err) >> return def) return
 
@@ -93,3 +96,6 @@ tee = (fmap . fmap . fmap) (fmap fst) forkM
 
 (>>=/) :: Monad m => m a -> (a -> m b) -> m a
 (>>=/) a = (a >>=) . tee return
+
+getInterfaceAt client bus path =
+  right (I.parseXML "/") <$> introspect client bus path
