@@ -6,6 +6,9 @@ author:              "Ivan Malison"
 maintainer:          "IvanMalison@gmail.com"
 copyright:           "2018 Ivan Malison"
 
+category: Desktop
+synopsis: A wrapper over the StatusNotifierItem/libappindicator dbus specification
+
 extra-source-files:
 - README.md
 - ChangeLog.md
