@@ -27,7 +27,6 @@ import           System.IO.Unsafe
 import           System.Log.Logger
 import           Text.Printf
 
-
 buildWatcher WatcherParams
                { watcherNamespace = interfaceNamespace
                , watcherLogger = logger

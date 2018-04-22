@@ -52,7 +52,7 @@ defaultHandler = unsafePerformIO $ streamHandler stdout INFO
 {-# NOINLINE makeDefaultLogger #-}
 makeDefaultLogger :: String -> Logger
 makeDefaultLogger name =
-  setLevel INFO $ unsafePerformIO $ getLogger name
+  unsafePerformIO $ getLogger name
 
 logErrorWithDefault ::
   Show a => Logger -> b -> String -> Either a b -> IO b

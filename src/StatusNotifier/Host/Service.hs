@@ -1,5 +1,6 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module StatusNotifier.Host.Service where
 
@@ -19,6 +20,7 @@ import           Data.Int
 import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.String
+import           Data.Unique
 import           Data.Word
 import           System.Log.Logger
 import           Text.Printf
@@ -44,20 +46,20 @@ data UpdateType
   | TitleUpdated
   | TooltipUpdated deriving (Eq, Show)
 
+type UpdateHandler = UpdateType -> ItemInfo -> IO ()
+
 data Params = Params
   { dbusClient :: Maybe Client
   , uniqueIdentifier :: String
   , namespace :: String
-  , handleUpdate :: UpdateType -> ItemInfo -> IO ()
-  , hostLogger :: Logger
   }
+
+hostLogger = logM "StatusNotifier.Host.Service"
 
 defaultParams = Params
   { dbusClient = Nothing
   , uniqueIdentifier = ""
   , namespace = "org.kde"
-  , handleUpdate = \_ _ -> return ()
-  , hostLogger = makeDefaultLogger "StatusNotifier.Watcher.Service"
   }
 
 data ItemInfo = ItemInfo
@@ -91,27 +93,46 @@ callFromInfo fn ItemInfo { itemServiceName = name
                          , itemServicePath = path
                          } = fn name path
 
-build :: Params -> IO (IO RequestNameReply)
+data Host = Host
+  { itemInfoMap :: IO (Map.Map BusName ItemInfo)
+  , addUpdateHandler :: UpdateHandler -> IO Unique
+  , removeUpdateHandler :: Unique -> IO ()
+  }
+
+build :: Params -> IO Host
 build Params { dbusClient = mclient
              , namespace = namespaceString
              , uniqueIdentifier = uniqueID
-             , handleUpdate = updateHandler
-             , hostLogger = logger
              } = do
   client <- maybe connectSession return mclient
   itemInfoMapVar <- newMVar Map.empty
+  updateHandlersVar <- newMVar ([] :: [(Unique, UpdateHandler)])
   let busName = getBusName namespaceString uniqueID
 
-      logError = logL logger ERROR
+      logError = hostLogger ERROR
       logErrorWithMessage message error = logError message >> logError (show error)
-      logInfo = logL logger INFO
+      logInfo = hostLogger INFO
       logErrorAndThen andThen e = logError (show e) >> andThen
 
-      doUpdate utype uinfo =
-        logInfo (printf "Sending update (iconPixmaps suppressed): %s %s"
+      doUpdateForHandler utype uinfo (unique, handler) = do
+        logInfo (printf "Sending update (iconPixmaps suppressed): %s %s, for handler %s"
                           (show utype)
-                          (show $ uinfo { iconPixmaps = [] })) >>
-        void (forkIO (updateHandler utype uinfo))
+                          (show $ uinfo { iconPixmaps = [] })
+                          (show $ hashUnique unique))
+        forkIO $ handler utype uinfo
+
+      doUpdate utype uinfo =
+        readMVar updateHandlersVar >>= mapM_ (doUpdateForHandler utype uinfo)
+
+      addHandler handler = do
+        unique <- newUnique
+        modifyMVar_ updateHandlersVar (return . ((unique, handler):))
+        let doUpdateForInfo info = doUpdateForHandler ItemAdded info (unique, handler)
+        readMVar itemInfoMapVar >>= mapM_ doUpdateForInfo
+        return unique
+
+      removeHandler unique =
+        modifyMVar_ updateHandlersVar (return . filter ((/= unique) . fst))
 
       getPixmaps a1 a2 a3 = fmap convertPixmapsToHostByteOrder <$>
                             I.getIconPixmap a1 a2 a3
@@ -148,7 +169,7 @@ build Params { dbusClient = mclient
       registerWithPairs =
         mapM (uncurry clientSignalRegister)
         where logUnableToCallSignal signal =
-                logL logger ERROR $ printf "Unable to call handler with %s" $
+                hostLogger ERROR $ printf "Unable to call handler with %s" $
                      show signal
               clientSignalRegister signalRegisterFn handler =
                 signalRegisterFn client matchAny handler logUnableToCallSignal
@@ -227,7 +248,6 @@ build Params { dbusClient = mclient
               logError (show error) >> shutdownHost >> return Map.empty
             finishInitialization serviceNames = do
               itemInfos <- createAll serviceNames
-              mapM_ (doUpdate ItemAdded) itemInfos
               let newMap = Map.fromList $ map (itemServiceName &&& id) itemInfos
                   -- Extra paranoia about the map
                   resultMap = if Map.null itemInfoMap
@@ -241,6 +261,15 @@ build Params { dbusClient = mclient
       startup =
         do
           nameRequestResult <- requestName client (fromString busName) []
-          when (nameRequestResult == NamePrimaryOwner) initializeItemInfoMap
+          if nameRequestResult == NamePrimaryOwner
+          then initializeItemInfoMap
+          else logErrorWithMessage "Failed to obtain desired service name" nameRequestResult
           return nameRequestResult
-  return startup
+  startup
+
+  return
+    Host
+    { itemInfoMap = readMVar itemInfoMapVar
+    , addUpdateHandler = addHandler
+    , removeUpdateHandler = removeHandler
+    }
