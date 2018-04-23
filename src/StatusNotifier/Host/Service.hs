@@ -13,8 +13,12 @@ import           Control.Monad
 import           Control.Monad.Except
 import           DBus
 import           DBus.Client
+import           DBus.Generation
+import           DBus.Internal.Types
 import qualified DBus.Internal.Message as M
+import qualified DBus.TH as DTH
 import qualified Data.ByteString as BS
+import           Data.Coerce
 import           Data.Either
 import           Data.Int
 import qualified Data.Map.Strict as Map
@@ -25,11 +29,13 @@ import           Data.Word
 import           System.Log.Logger
 import           Text.Printf
 
-import qualified StatusNotifier.Item.Constants as I
 import qualified StatusNotifier.Item.Client as I
+import qualified StatusNotifier.Item.Constants as I
 import           StatusNotifier.Util
 import qualified StatusNotifier.Watcher.Client as W
+import qualified StatusNotifier.Watcher.Constants as W
 import qualified StatusNotifier.Watcher.Signals as W
+import qualified StatusNotifier.Watcher.Service as W
 
 statusNotifierHostString :: String
 statusNotifierHostString = "StatusNotifierHost"
@@ -52,6 +58,7 @@ data Params = Params
   { dbusClient :: Maybe Client
   , uniqueIdentifier :: String
   , namespace :: String
+  , startWatcher :: Bool
   }
 
 hostLogger = logM "StatusNotifier.Host.Service"
@@ -60,6 +67,7 @@ defaultParams = Params
   { dbusClient = Nothing
   , uniqueIdentifier = ""
   , namespace = "org.kde"
+  , startWatcher = False
   }
 
 data ItemInfo = ItemInfo
@@ -99,10 +107,11 @@ data Host = Host
   , removeUpdateHandler :: Unique -> IO ()
   }
 
-build :: Params -> IO Host
+build :: Params -> IO (Maybe Host)
 build Params { dbusClient = mclient
              , namespace = namespaceString
              , uniqueIdentifier = uniqueID
+             , startWatcher = shouldStartWatcher
              } = do
   client <- maybe connectSession return mclient
   itemInfoMapVar <- newMVar Map.empty
@@ -231,7 +240,7 @@ build Params { dbusClient = mclient
         , (I.registerForNewTitle, handleNewTitle)
         ]
 
-      initializeItemInfoMap = modifyMVar_ itemInfoMapVar $ \itemInfoMap -> do
+      initializeItemInfoMap = modifyMVar itemInfoMapVar $ \itemInfoMap -> do
         -- All initialization is done inside this modifyMvar to avoid race
         -- conditions with the itemInfoMapVar.
         clientSignalHandlers <- registerWithPairs clientRegistrationPairs
@@ -245,7 +254,7 @@ build Params { dbusClient = mclient
                 releaseName client (fromString busName)
                 return ()
             logErrorAndShutdown error =
-              logError (show error) >> shutdownHost >> return Map.empty
+              logError (show error) >> shutdownHost >> return (Map.empty, False)
             finishInitialization serviceNames = do
               itemInfos <- createAll serviceNames
               let newMap = Map.fromList $ map (itemServiceName &&& id) itemInfos
@@ -254,22 +263,34 @@ build Params { dbusClient = mclient
                               then newMap
                               else Map.union itemInfoMap newMap
               W.registerStatusNotifierHost client busName >>=
-               either logErrorAndShutdown (const $ return resultMap)
+               either logErrorAndShutdown (const $ return (resultMap, True))
         W.getRegisteredStatusNotifierItems client >>=
          either logErrorAndShutdown finishInitialization
 
-      startup =
-        do
-          nameRequestResult <- requestName client (fromString busName) []
-          if nameRequestResult == NamePrimaryOwner
-          then initializeItemInfoMap
-          else logErrorWithMessage "Failed to obtain desired service name" nameRequestResult
-          return nameRequestResult
-  startup
+      startWatcherIfNeeded = do
+        let watcherName = maybe "" coerce $ genBusName W.watcherClientGenerationParams
+            startWatcher = do
+              (_, doIt) <- W.buildWatcher W.defaultWatcherParams
+              doIt
+        res <- DTH.getNameOwner client watcherName
+        case res of
+          Right _ -> return ()
+          Left _ -> void $ forkIO $ void startWatcher
 
-  return
-    Host
-    { itemInfoMap = readMVar itemInfoMapVar
-    , addUpdateHandler = addHandler
-    , removeUpdateHandler = removeHandler
-    }
+  when shouldStartWatcher startWatcherIfNeeded
+  nameRequestResult <- requestName client (fromString busName) []
+  if nameRequestResult == NamePrimaryOwner
+  then do
+    initializationSuccess <- initializeItemInfoMap
+    return $ if initializationSuccess
+    then
+      Just Host
+      { itemInfoMap = readMVar itemInfoMapVar
+      , addUpdateHandler = addHandler
+      , removeUpdateHandler = removeHandler
+      }
+    else Nothing
+  else do
+    logErrorWithMessage "Failed to obtain desired service name" nameRequestResult
+    return Nothing
+
