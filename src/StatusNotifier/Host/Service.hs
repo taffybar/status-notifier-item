@@ -14,8 +14,8 @@ import           Control.Monad.Except
 import           DBus
 import           DBus.Client
 import           DBus.Generation
-import           DBus.Internal.Types
 import qualified DBus.Internal.Message as M
+import           DBus.Internal.Types
 import qualified DBus.TH as DTH
 import qualified Data.ByteString as BS
 import           Data.Coerce
@@ -24,6 +24,7 @@ import           Data.Int
 import qualified Data.Map.Strict as Map
 import           Data.Maybe
 import           Data.String
+import           Data.Typeable
 import           Data.Unique
 import           Data.Word
 import           System.Log.Logger
@@ -105,7 +106,7 @@ data Host = Host
   { itemInfoMap :: IO (Map.Map BusName ItemInfo)
   , addUpdateHandler :: UpdateHandler -> IO Unique
   , removeUpdateHandler :: Unique -> IO ()
-  }
+  } deriving Typeable
 
 build :: Params -> IO (Maybe Host)
 build Params { dbusClient = mclient
