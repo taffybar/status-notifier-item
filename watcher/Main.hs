@@ -4,11 +4,15 @@ import Control.Concurrent.MVar
 import Control.Monad
 import DBus.Client
 import Data.Semigroup ((<>))
+import Data.Version (showVersion)
 import Options.Applicative
 import StatusNotifier.Watcher.Constants
 import StatusNotifier.Watcher.Service
 import System.Log.DBus.Server
 import System.Log.Logger
+import Text.Printf
+
+import Paths_status_notifier_item (version)
 
 getWatcherParams :: String -> String -> Priority -> IO WatcherParams
 getWatcherParams namespace path priority = do
@@ -45,10 +49,17 @@ watcherParamsParser = getWatcherParams
   <> value WARNING
   )
 
+versionOption :: Parser (a -> a)
+versionOption = infoOption
+                (printf "status-notifier-watcher %s" $ showVersion version)
+                (  long "version"
+                <> help "Show the version number of gtk-sni-tray"
+                )
+
 main :: IO ()
 main = do
   watcherParams <- join $ execParser $
-                   info (watcherParamsParser <**> helper)
+                   info (helper <*> versionOption <*> watcherParamsParser)
                    (  fullDesc
                    <> progDesc "Run a StatusNotifierWatcher")
   stop <- newEmptyMVar
