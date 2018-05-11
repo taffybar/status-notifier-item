@@ -105,6 +105,7 @@ data Host = Host
   { itemInfoMap :: IO (Map.Map BusName ItemInfo)
   , addUpdateHandler :: UpdateHandler -> IO Unique
   , removeUpdateHandler :: Unique -> IO ()
+  , forceUpdate :: BusName -> IO ()
   } deriving Typeable
 
 build :: Params -> IO (Maybe Host)
@@ -183,7 +184,7 @@ build Params { dbusClient = mclient
               clientSignalRegister signalRegisterFn handler =
                 signalRegisterFn client matchAny handler logUnableToCallSignal
 
-      handleItemAdded _ serviceName =
+      handleItemAdded serviceName =
         modifyMVar_ itemInfoMapVar $ \itemInfoMap ->
           buildItemInfo serviceName >>=
                         either (logErrorAndThen $ return itemInfoMap)
@@ -195,13 +196,13 @@ build Params { dbusClient = mclient
         maybe I.defaultPath itemServicePath . Map.lookup name <$>
         readMVar itemInfoMapVar
 
-      handleItemRemoved _ serviceName = let busName = busName_ serviceName in
+      handleItemRemoved serviceName = let busName = busName_ serviceName in
         modifyMVar_ itemInfoMapVar (return . Map.delete busName ) >>
         doUpdate ItemRemoved defaultItemInfo { itemServiceName = busName }
 
       watcherRegistrationPairs =
-        [ (W.registerForStatusNotifierItemRegistered, handleItemAdded)
-        , (W.registerForStatusNotifierItemUnregistered, handleItemRemoved)
+        [ (W.registerForStatusNotifierItemRegistered, const handleItemAdded)
+        , (W.registerForStatusNotifierItemUnregistered, const handleItemRemoved)
         ]
 
       getSender fn s@M.Signal { M.signalSender = Just sender} =
@@ -288,9 +289,9 @@ build Params { dbusClient = mclient
       { itemInfoMap = readMVar itemInfoMapVar
       , addUpdateHandler = addHandler
       , removeUpdateHandler = removeHandler
+      , forceUpdate = handleItemAdded . coerce
       }
     else Nothing
   else do
     logErrorWithMessage "Failed to obtain desired service name" nameRequestResult
     return Nothing
-
