@@ -31,7 +31,6 @@ import           System.Log.Logger
 import           Text.Printf
 
 import qualified StatusNotifier.Item.Client as I
-import qualified StatusNotifier.Item.Constants as I
 import           StatusNotifier.Util
 import qualified StatusNotifier.Watcher.Client as W
 import qualified StatusNotifier.Watcher.Constants as W

@@ -7,26 +7,40 @@ import           DBus.Client
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
 import qualified DBus.Introspection as I
+import qualified DBus.Generation as G
 import qualified Data.ByteString as BS
+import           Data.Maybe
 import qualified Data.Vector.Storable as VS
 import           Data.Vector.Storable.ByteString
 import           Language.Haskell.TH
 import           Network.Socket (ntohl)
-import           Paths_status_notifier_item ( getDataDir )
 import           StatusNotifier.TH
-import           System.FilePath
 import           System.IO
 import           System.IO.Unsafe
 import           System.Log.Handler.Simple
 import           System.Log.Logger
 
-getXMLDataFile :: String -> IO FilePath
-getXMLDataFile filename = (</> filename) . (</> "xml") <$> getDataDir
+getIntrospectionObjectFromFile :: FilePath -> T.ObjectPath -> Q I.Object
+getIntrospectionObjectFromFile filepath nodePath = runIO $
+  head . maybeToList . I.parseXML nodePath <$> readFile filepath
+
+generateClientFromFile :: G.GenerationParams -> Bool -> FilePath -> Q [Dec]
+generateClientFromFile params useObjectPath filepath = do
+  object <- getIntrospectionObjectFromFile filepath "/"
+  let interface = head $ I.objectInterfaces object
+      actualObjectPath = I.objectPath object
+      realParams =
+        if useObjectPath
+        then params { G.genObjectPath = Just actualObjectPath }
+        else params
+  (++) <$> G.generateClient realParams interface <*>
+           G.generateSignalsFromInterface realParams interface
 
 ifM :: Monad m => m Bool -> m a -> m a -> m a
 ifM cond whenTrue whenFalse =
   cond >>= (\bool -> if bool then whenTrue else whenFalse)
 
+makeLensesWithLSuffix :: Name -> DecsQ
 makeLensesWithLSuffix =
   makeLensesWith $
   lensRules & lensField .~ \_ _ name ->
@@ -44,15 +58,6 @@ maybeToEither = flip maybe Right . Left
 
 makeErrorReply :: ErrorName -> String -> Reply
 makeErrorReply e message = ReplyError e [T.toVariant message]
-
-{-# NOINLINE defaultHandler #-}
-defaultHandler :: GenericHandler Handle
-defaultHandler = unsafePerformIO $ streamHandler stdout INFO
-
-{-# NOINLINE makeDefaultLogger #-}
-makeDefaultLogger :: String -> Logger
-makeDefaultLogger name =
-  unsafePerformIO $ getLogger name
 
 logErrorWithDefault ::
   Show a => Logger -> b -> String -> Either a b -> IO b
@@ -97,5 +102,10 @@ tee = (fmap . fmap . fmap) (fmap fst) forkM
 (>>=/) :: Monad m => m a -> (a -> m b) -> m a
 (>>=/) a = (a >>=) . tee return
 
+getInterfaceAt
+  :: Client
+  -> T.BusName
+  -> T.ObjectPath
+  -> IO (Either M.MethodError (Maybe I.Object))
 getInterfaceAt client bus path =
   right (I.parseXML "/") <$> introspect client bus path

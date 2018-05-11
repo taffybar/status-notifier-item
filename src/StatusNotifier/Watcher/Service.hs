@@ -20,6 +20,7 @@ import           Data.List
 import           Data.Maybe
 import           Data.Monoid
 import           Data.String
+import qualified StatusNotifier.Item.Client as Item
 import           StatusNotifier.Util
 import           StatusNotifier.Watcher.Constants
 import           StatusNotifier.Watcher.Signals
@@ -58,7 +59,7 @@ buildWatcher WatcherParams
             parseServiceError = makeErrorReply errorInvalidParameters $
               printf "the provided service %s could not be parsed \
                      \as a bus name or an object path." name
-            path = fromMaybe "/StatusNotifierItem"  $ T.parseObjectPath name
+            path = fromMaybe Item.defaultPath $ T.parseObjectPath name
             remapErrorName =
               left $ (`makeErrorReply` "Failed to verify ownership.") .
                    M.methodErrorName

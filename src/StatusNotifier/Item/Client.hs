@@ -1,17 +1,17 @@
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE OverloadedStrings #-}
 module StatusNotifier.Item.Client where
 
 import DBus.Generation
-import StatusNotifier.Item.Constants as C
-import Language.Haskell.TH
+import DBus.Internal.Types
+import StatusNotifier.Util
+import System.FilePath
 
-generateClient C.generationParams C.introspectionInterface
-generateSignalsFromInterface C.generationParams C.introspectionInterface
+generateClientFromFile
+  defaultGenerationParams
+  { genTakeSignalErrorHandler = True }
+  False
+  ("xml" </> "StatusNotifierItem.xml")
 
-printItemClient =
-  runQ (generateClient C.generationParams C.introspectionInterface) >>=
-       putStrLn . pprint
-
-printItemSignals =
-  runQ (generateSignalsFromInterface C.generationParams C.introspectionInterface) >>=
-       putStrLn . pprint
+defaultPath :: ObjectPath
+defaultPath = "/StatusNotifierItem"
