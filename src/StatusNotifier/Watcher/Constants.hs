@@ -27,7 +27,6 @@ data ItemEntry = ItemEntry
 data WatcherParams = WatcherParams
   { watcherNamespace :: String
   , watcherPath :: String
-  , watcherLogger :: Logger
   , watcherStop :: IO ()
   , watcherDBusClient :: Maybe Client
   }
@@ -36,7 +35,6 @@ defaultWatcherParams :: WatcherParams
 defaultWatcherParams =
   WatcherParams
   { watcherNamespace = "org.kde"
-  , watcherLogger = makeDefaultLogger "StatusNotifier.Watcher.Service"
   , watcherStop = return ()
   , watcherPath = "/StatusNotifierWatcher"
   , watcherDBusClient = Nothing

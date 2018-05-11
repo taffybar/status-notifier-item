@@ -22,13 +22,13 @@ library:
     - base >= 4.7 && < 5
     - bytestring
     - containers
-    - dbus >=1.0.0 && <2.0.0
+    - dbus >= 1.0.0 && < 2.0.0
     - filepath
     - hslogger
     - lens
     - mtl
     - network
-    - spool >= 0.1 && <1.0
+    - spool >= 0.1 && < 1.0
     - template-haskell
     - transformers
     - vector
@@ -38,7 +38,8 @@ executables:
     source-dirs: ./watcher
     dependencies:
       - base >= 4.7 && < 5
-      - dbus >=1.0.0 && <2.0.0
+      - dbus >= 1.0.0 && < 2.0.0
+      - dbus-hslogger >= 0.1.0.1 && < 0.2.0.0
       - hslogger
       - status-notifier-item
       - optparse-applicative

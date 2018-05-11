@@ -29,14 +29,14 @@ import           Text.Printf
 
 buildWatcher WatcherParams
                { watcherNamespace = interfaceNamespace
-               , watcherLogger = logger
                , watcherStop = stopWatcher
                , watcherPath = path
                , watcherDBusClient = mclient
                } = do
   let watcherInterfaceName = getWatcherInterfaceName interfaceNamespace
-      log = logL logger INFO
-      logError = logL logger ERROR
+      logNamespace = "StatusNotifier.Watcher.Service"
+      log = logM logNamespace  INFO
+      logError = logM logNamespace ERROR
       mkLogCb cb msg = lift (log (show msg)) >> cb msg
       mkLogMethod method = method { methodHandler = mkLogCb $ methodHandler method }
       mkLogProperty name fn =
@@ -50,7 +50,9 @@ buildWatcher WatcherParams
   let itemIsRegistered item items =
         isJust $ find (== item) items
 
-      registerStatusNotifierItem MethodCall { methodCallSender = sender } name = runExceptT $ do
+      registerStatusNotifierItem MethodCall
+                                   { methodCallSender = sender }
+                                 name = runExceptT $ do
         let maybeBusName = getFirst $ mconcat $
                            map First [T.parseBusName name, sender]
             parseServiceError = makeErrorReply errorInvalidParameters $
@@ -64,7 +66,8 @@ buildWatcher WatcherParams
         let item = ItemEntry { serviceName = busName
                              , servicePath = path
                              }
-        hasOwner <- ExceptT $ remapErrorName <$> DBusTH.nameHasOwner client (coerce busName)
+        hasOwner <- ExceptT $ remapErrorName <$>
+                    DBusTH.nameHasOwner client (coerce busName)
         lift $ modifyMVar_ notifierItems $ \currentItems ->
           if itemIsRegistered item currentItems
           then
@@ -125,17 +128,25 @@ buildWatcher WatcherParams
           return ()
 
       watcherMethods = map mkLogMethod
-        [ autoMethodWithMsg "RegisterStatusNotifierItem" registerStatusNotifierItem
-        , autoMethod "RegisterStatusNotifierHost" registerStatusNotifierHost
-        , autoMethod "StopWatcher" stopWatcher
-        , autoMethod "GetObjectPathForItemName" objectPathForItem
+        [ autoMethodWithMsg "RegisterStatusNotifierItem"
+          registerStatusNotifierItem
+        , autoMethod "RegisterStatusNotifierHost"
+          registerStatusNotifierHost
+        , autoMethod "StopWatcher"
+          stopWatcher
+        , autoMethod "GetObjectPathForItemName"
+          objectPathForItem
         ]
 
       watcherProperties =
-        [ mkLogProperty "RegisteredStatusNotifierItems" registeredStatusNotifierItems
-        , mkLogProperty "RegisteredSNIEntries" registeredSNIEntries
-        , mkLogProperty "IsStatusNotifierHostRegistered" isStatusNotifierHostRegistered
-        , mkLogProperty "ProtocolVersion" protocolVersion
+        [ mkLogProperty "RegisteredStatusNotifierItems"
+          registeredStatusNotifierItems
+        , mkLogProperty "RegisteredSNIEntries"
+          registeredSNIEntries
+        , mkLogProperty "IsStatusNotifierHostRegistered"
+          isStatusNotifierHostRegistered
+        , mkLogProperty "ProtocolVersion"
+          protocolVersion
         ]
 
       watcherInterface =
@@ -151,7 +162,8 @@ buildWatcher WatcherParams
         case nameRequestResult of
           NamePrimaryOwner ->
             do
-              _ <- DBusTH.registerForNameOwnerChanged client matchAny handleNameOwnerChanged
+              _ <- DBusTH.registerForNameOwnerChanged client
+                   matchAny handleNameOwnerChanged
               export client (fromString path) watcherInterface
           _ -> stopWatcher
         return nameRequestResult
@@ -163,5 +175,6 @@ buildWatcher WatcherParams
 -- IO isn't needed to build watcher
 {-# NOINLINE watcherInterface #-}
 watcherInterface = buildIntrospectionInterface clientInterface
-  where (clientInterface, _) = unsafePerformIO $ buildWatcher
-                               defaultWatcherParams { watcherDBusClient = Just undefined }
+  where (clientInterface, _) =
+          unsafePerformIO $ buildWatcher
+          defaultWatcherParams { watcherDBusClient = Just undefined }
