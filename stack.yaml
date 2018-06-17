@@ -5,3 +5,7 @@ extra-deps:
 - dbus-1.0.1
 - dbus-hslogger-0.1.0.1
 - spool-0.1
+nix:
+  packages:
+    - libxml2
+    - pkgconfig
