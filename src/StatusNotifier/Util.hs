@@ -4,14 +4,16 @@ module StatusNotifier.Util where
 import           Control.Arrow
 import           Control.Lens
 import           DBus.Client
+import qualified DBus.Generation as G
 import qualified DBus.Internal.Message as M
 import qualified DBus.Internal.Types as T
 import qualified DBus.Introspection as I
-import qualified DBus.Generation as G
+import           Data.Bits
 import qualified Data.ByteString as BS
 import           Data.Maybe
 import qualified Data.Vector.Storable as VS
 import           Data.Vector.Storable.ByteString
+import           Data.Word
 import           Language.Haskell.TH
 import           Network.Socket (ntohl)
 import           StatusNotifier.TH
@@ -49,9 +51,17 @@ makeLensesWithLSuffix =
 whenJust :: Monad m => Maybe a -> (a -> m ()) -> m ()
 whenJust = flip $ maybe $ return ()
 
+convertARGBToABGR :: Word32 -> Word32
+convertARGBToABGR bits = (blue `shift` 16) .|. (red `shift` (-16)) .|. green .|. alpha
+  where
+    blue = bits .&. 0xFF
+    green = bits .&. 0xFF00
+    red = bits .&. 0xFF0000
+    alpha = bits .&. 0xFF000000
+
 networkToSystemByteOrder :: BS.ByteString -> BS.ByteString
 networkToSystemByteOrder original =
-  vectorToByteString $ VS.map ntohl $ byteStringToVector original
+  vectorToByteString $ VS.map (convertARGBToABGR . ntohl) $ byteStringToVector original
 
 maybeToEither :: b -> Maybe a -> Either b a
 maybeToEither = flip maybe Right . Left
