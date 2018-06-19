@@ -80,17 +80,6 @@ data ItemInfo = ItemInfo
   , menuPath :: Maybe ObjectPath
   } deriving (Eq, Show)
 
-defaultItemInfo =
-  ItemInfo
-  { itemServiceName = "a.b"
-  , itemServicePath = "/"
-  , iconThemePath = Nothing
-  , iconName = ""
-  , iconTitle = ""
-  , iconPixmaps = []
-  , menuPath = Nothing
-  }
-
 makeLensesWithLSuffix ''ItemInfo
 
 convertPixmapsToHostByteOrder ::
@@ -198,7 +187,7 @@ build Params { dbusClient = mclient
 
       handleItemRemoved serviceName = let busName = busName_ serviceName in
         modifyMVar_ itemInfoMapVar (return . Map.delete busName ) >>
-        doUpdate ItemRemoved defaultItemInfo { itemServiceName = busName }
+        doUpdate ItemRemoved ItemInfo { itemServiceName = busName }
 
       watcherRegistrationPairs =
         [ (W.registerForStatusNotifierItemRegistered, const handleItemAdded)
@@ -211,21 +200,39 @@ build Params { dbusClient = mclient
 
       logPropError = logErrorWithMessage "Error updating property: "
 
+      runProperty prop serviceName =
+        getObjectPathForItemName serviceName >>= prop client serviceName
+
       makeUpdaterFromProp = makeUpdaterFromProp' logPropError
+      makeUpdaterFromProp' onError lens updatetype prop =
+        getSender $ makeUpdaterFromProp'' onError lens updatetype prop
+      makeUpdaterFromProp'' onError lens updateType prop sender =
+        runProperty prop sender >>=
+        (either onError $ \newValue -> do
+          newInfo <- runUpdateOfProperty lens updateType sender newValue
+          -- If the newInfo is a nothing value, we do not know which
+          -- item the signal is telling use to update, so we just update
+          -- everything.
+          hostLogger WARNING $
+            printf "Got signal for update type: %s from unknown sender: %s"
+            (show updateType) (show sender)
+          when (isNothing newInfo) $
+               updatePropertyForAllItemInfos onError lens updateType prop)
 
-      makeUpdaterFromProp' onError lens updateType prop = getSender run
-        where run sender =
-                getObjectPathForItemName sender >>=
-                prop client sender >>=
-                either onError (runUpdate lens updateType sender)
+      runUpdateOfProperty lens updateType serviceName newValue = do
+        maybeServiceInfo <- modifyMVar itemInfoMapVar modify
+        whenJust maybeServiceInfo (doUpdate updateType)
+        return maybeServiceInfo
+          where
+            modify infoMap =
+              let newMap = set (at serviceName . _Just . lens) newValue infoMap
+              in return (newMap, Map.lookup serviceName newMap)
 
-      runUpdate lens updateType sender newValue =
-        modifyMVar itemInfoMapVar modify >>= callUpdate
-          where modify infoMap =
-                  let newMap = set (at sender . non defaultItemInfo . lens)
-                               newValue infoMap
-                  in return (newMap, Map.lookup sender newMap)
-                callUpdate = flip whenJust (doUpdate updateType)
+      updatePropertyForAllItemInfos onError lens updateType prop = do
+        readMVar itemInfoMapVar >>= mapM_ (runUpdateForService . itemServiceName)
+        where runUpdateForService serviceName =
+                runProperty prop serviceName >>=
+                either onError (void . runUpdateOfProperty lens updateType serviceName)
 
       updatePixmaps =
         makeUpdaterFromProp iconPixmapsL IconUpdated getPixmaps
