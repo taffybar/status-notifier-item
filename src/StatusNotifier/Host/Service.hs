@@ -80,6 +80,9 @@ data ItemInfo = ItemInfo
   , menuPath :: Maybe ObjectPath
   } deriving (Eq, Show)
 
+supressPixelData info =
+  info { iconPixmaps = map (\(w, h, _) -> (w, h, "")) $ iconPixmaps info }
+
 makeLensesWithLSuffix ''ItemInfo
 
 convertPixmapsToHostByteOrder ::
@@ -116,7 +119,7 @@ build Params { dbusClient = mclient
       doUpdateForHandler utype uinfo (unique, handler) = do
         logInfo (printf "Sending update (iconPixmaps suppressed): %s %s, for handler %s"
                           (show utype)
-                          (show $ uinfo { iconPixmaps = [] })
+                          (show $ supressPixelData uinfo)
                           (show $ hashUnique unique))
         forkIO $ handler utype uinfo
 
@@ -185,9 +188,16 @@ build Params { dbusClient = mclient
         maybe I.defaultPath itemServicePath . Map.lookup name <$>
         readMVar itemInfoMapVar
 
-      handleItemRemoved serviceName = let busName = busName_ serviceName in
-        modifyMVar_ itemInfoMapVar (return . Map.delete busName ) >>
-        doUpdate ItemRemoved ItemInfo { itemServiceName = busName }
+      handleItemRemoved serviceName =
+        modifyMVar itemInfoMapVar doRemove >>=
+        maybe logNonExistantRemoval (doUpdate ItemRemoved)
+        where
+          busName = busName_ serviceName
+          doRemove currentMap =
+            return (Map.delete busName currentMap, Map.lookup busName currentMap)
+          logNonExistantRemoval =
+            hostLogger WARNING $ printf "Attempt to remove unknown item %s" $
+                       show busName
 
       watcherRegistrationPairs =
         [ (W.registerForStatusNotifierItemRegistered, const handleItemAdded)
@@ -203,21 +213,25 @@ build Params { dbusClient = mclient
       runProperty prop serviceName =
         getObjectPathForItemName serviceName >>= prop client serviceName
 
-      makeUpdaterFromProp = makeUpdaterFromProp' logPropError
-      makeUpdaterFromProp' onError lens updatetype prop =
-        getSender $ makeUpdaterFromProp'' onError lens updatetype prop
-      makeUpdaterFromProp'' onError lens updateType prop sender =
-        runProperty prop sender >>=
-        (either onError $ \newValue -> do
-          newInfo <- runUpdateOfProperty lens updateType sender newValue
-          -- If the newInfo is a nothing value, we do not know which
-          -- item the signal is telling use to update, so we just update
-          -- everything.
-          hostLogger WARNING $
-            printf "Got signal for update type: %s from unknown sender: %s"
-            (show updateType) (show sender)
-          when (isNothing newInfo) $
-               updatePropertyForAllItemInfos onError lens updateType prop)
+      logUnknownSender updateType signal =
+        hostLogger WARNING $
+                   printf "Got signal for update type: %s from unknown sender: %s"
+                   (show updateType) (show signal)
+
+      logErrorsUpdater lens updateType prop signal =
+        makeUpdaterFromProp lens updateType prop signal >>=
+        either logPropError ((flip when logSenderErrorAndUpdateAll) . isNothing)
+          where
+            logSenderErrorAndUpdateAll = do
+              logUnknownSender updateType signal
+              void $ updatePropertyForAllItemInfos lens updateType prop
+
+      makeUpdaterFromProp lens updateType prop
+                          signal@M.Signal { M.signalSender = Just sender} =
+        runExceptT $
+          ExceptT (runProperty prop sender) >>=
+          lift . runUpdateOfProperty lens updateType sender
+      makeUpdaterFromProp _ _ _ _ = return $ Right Nothing
 
       runUpdateOfProperty lens updateType serviceName newValue = do
         maybeServiceInfo <- modifyMVar itemInfoMapVar modify
@@ -228,20 +242,39 @@ build Params { dbusClient = mclient
               let newMap = set (at serviceName . _Just . lens) newValue infoMap
               in return (newMap, Map.lookup serviceName newMap)
 
-      updatePropertyForAllItemInfos onError lens updateType prop = do
-        readMVar itemInfoMapVar >>= mapM_ (runUpdateForService . itemServiceName)
+      updatePropertyForAllItemInfos lens updateType prop = do
+        readMVar itemInfoMapVar >>= mapM (runUpdateForService . itemServiceName)
         where runUpdateForService serviceName =
                 runProperty prop serviceName >>=
-                either onError (void . runUpdateOfProperty lens updateType serviceName)
+                either (const $ return ())
+                       (void . runUpdateOfProperty lens updateType serviceName)
 
-      updatePixmaps =
+      updateAllIcons =
+        updatePropertyForAllItemInfos iconPixmapsL IconUpdated getPixmaps >>
+        updatePropertyForAllItemInfos iconNameL IconNameUpdated I.getIconName
+
+      handleNewPixmaps =
         makeUpdaterFromProp iconPixmapsL IconUpdated getPixmaps
-      handleNewIcon signal =
-        makeUpdaterFromProp'
-        (const $ updatePixmaps signal)
-        iconNameL IconNameUpdated I.getIconName signal
+      handleNewIconName =
+        makeUpdaterFromProp iconNameL IconNameUpdated I.getIconName
+      handleNewIcon signal = do
+        newNameResult <- handleNewIconName signal
+        newPixmapsResult <- handleNewPixmaps signal
+        let remPD = right (fmap supressPixelData)
+            result = (remPD newNameResult, remPD newPixmapsResult)
+            debugLog = hostLogger DEBUG $ printf "Icon update results %s" (show result)
+            updateAll = logUnknownSender IconUpdated signal >> void updateAllIcons
+            gotProp = rights [newNameResult, newPixmapsResult]
+            fullSuccess = catMaybes gotProp
+        if null fullSuccess
+        then if null gotProp
+             then hostLogger WARNING $ printf
+                    "Failed to load new icon with either method %s"
+                    (show result)
+             else updateAll
+        else debugLog
       handleNewTitle =
-        makeUpdaterFromProp iconTitleL TitleUpdated I.getTitle
+        logErrorsUpdater iconTitleL TitleUpdated I.getTitle
 
       clientRegistrationPairs =
         [ (I.registerForNewIcon, handleNewIcon)
