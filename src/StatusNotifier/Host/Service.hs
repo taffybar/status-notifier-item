@@ -273,12 +273,19 @@ build Params { dbusClient = mclient
                     (show result)
              else updateAll
         else debugLog
+
+      getThemePathDefault client busName objectPath =
+        right Just <$> I.getIconThemePath client busName objectPath
+      handleNewIconThemePath =
+        logErrorsUpdater iconThemePathL IconUpdated getThemePathDefault
+
       handleNewTitle =
         logErrorsUpdater iconTitleL TitleUpdated I.getTitle
 
       clientRegistrationPairs =
         [ (I.registerForNewIcon, handleNewIcon)
         , (I.registerForNewTitle, handleNewTitle)
+        , (I.registerForNewIconThemePath, handleNewIconThemePath)
         ]
 
       initializeItemInfoMap = modifyMVar itemInfoMapVar $ \itemInfoMap -> do

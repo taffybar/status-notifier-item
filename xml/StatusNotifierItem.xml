@@ -47,9 +47,7 @@
     <!-- Signals: the client wants to change something in the status-->
     <signal name="NewTitle"></signal>
     <signal name="NewIcon"></signal>
-    <signal name="NewIconThemePath">
-      <arg type="s" name="icon_theme_path" direction="out" />
-    </signal>
+    <signal name="NewIconThemePath"></signal>
     <signal name="NewAttentionIcon"></signal>
     <signal name="NewOverlayIcon"></signal>
     <signal name="NewToolTip"></signal>
