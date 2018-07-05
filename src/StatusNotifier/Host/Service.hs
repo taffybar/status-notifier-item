@@ -50,7 +50,7 @@ data UpdateType
   | IconUpdated
   | IconNameUpdated
   | TitleUpdated
-  | TooltipUpdated deriving (Eq, Show)
+  | ToolTipUpdated deriving (Eq, Show)
 
 type UpdateHandler = UpdateType -> ItemInfo -> IO ()
 
@@ -70,13 +70,16 @@ defaultParams = Params
   , startWatcher = False
   }
 
+type ImageInfo = [(Int32, Int32, BS.ByteString)]
+
 data ItemInfo = ItemInfo
   { itemServiceName :: BusName
   , itemServicePath :: ObjectPath
+  , itemToolTip :: Maybe (String, ImageInfo, String, String)
   , iconTitle :: String
   , iconName :: String
   , iconThemePath :: Maybe String
-  , iconPixmaps :: [(Int32, Int32, BS.ByteString)]
+  , iconPixmaps :: ImageInfo
   , menuPath :: Maybe ObjectPath
   } deriving (Eq, Show)
 
@@ -139,11 +142,12 @@ build Params { dbusClient = mclient
       getPixmaps a1 a2 a3 = fmap convertPixmapsToHostByteOrder <$>
                             I.getIconPixmap a1 a2 a3
 
+      getMaybe fn a b c = right Just <$> fn a b c
+
       buildItemInfo name = runExceptT $ do
         pathString <- ExceptT $ W.getObjectPathForItemName client name
         let busName = fromString name
             path = objectPath_ pathString
-            getMaybe fn a b c = right Just <$> fn a b c
             doGetDef def fn =
               ExceptT $ exemptAll def <$> fn client busName path
             doGet fn = ExceptT $ fn client busName path
@@ -152,9 +156,11 @@ build Params { dbusClient = mclient
         themePath <- doGetDef Nothing $ getMaybe I.getIconThemePath
         menu <- doGetDef Nothing $ getMaybe I.getMenu
         title <- doGetDef "" I.getTitle
+        tooltip <- doGetDef Nothing $ getMaybe I.getToolTip
         return ItemInfo
                  { itemServiceName = busName_ name
                  , itemServicePath = path
+                 , itemToolTip = tooltip
                  , iconPixmaps = pixmaps
                  , iconThemePath = themePath
                  , iconName = iName
@@ -282,10 +288,14 @@ build Params { dbusClient = mclient
       handleNewTitle =
         logErrorsUpdater iconTitleL TitleUpdated I.getTitle
 
+      handleNewTooltip =
+        logErrorsUpdater itemToolTipL ToolTipUpdated $ getMaybe I.getToolTip
+
       clientRegistrationPairs =
         [ (I.registerForNewIcon, handleNewIcon)
         , (I.registerForNewTitle, handleNewTitle)
         , (I.registerForNewIconThemePath, handleNewIconThemePath)
+        , (I.registerForNewToolTip, handleNewTooltip)
         ]
 
       initializeItemInfoMap = modifyMVar itemInfoMapVar $ \itemInfoMap -> do
