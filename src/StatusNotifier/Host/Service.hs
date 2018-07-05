@@ -49,6 +49,7 @@ data UpdateType
   | ItemRemoved
   | IconUpdated
   | IconNameUpdated
+  | StatusUpdated
   | TitleUpdated
   | ToolTipUpdated deriving (Eq, Show)
 
@@ -75,6 +76,8 @@ type ImageInfo = [(Int32, Int32, BS.ByteString)]
 data ItemInfo = ItemInfo
   { itemServiceName :: BusName
   , itemServicePath :: ObjectPath
+  , itemId :: Maybe String
+  , itemStatus :: Maybe String
   , itemToolTip :: Maybe (String, ImageInfo, String, String)
   , iconTitle :: String
   , iconName :: String
@@ -116,6 +119,7 @@ build Params { dbusClient = mclient
 
       logError = hostLogger ERROR
       logErrorWithMessage message error = logError message >> logError (show error)
+
       logInfo = hostLogger INFO
       logErrorAndThen andThen e = logError (show e) >> andThen
 
@@ -157,8 +161,12 @@ build Params { dbusClient = mclient
         menu <- doGetDef Nothing $ getMaybe I.getMenu
         title <- doGetDef "" I.getTitle
         tooltip <- doGetDef Nothing $ getMaybe I.getToolTip
+        idString <- doGetDef Nothing $ getMaybe I.getId
+        status <- doGetDef Nothing $ getMaybe I.getStatus
         return ItemInfo
                  { itemServiceName = busName_ name
+                 , itemId = idString
+                 , itemStatus = status
                  , itemServicePath = path
                  , itemToolTip = tooltip
                  , iconPixmaps = pixmaps
@@ -233,7 +241,7 @@ build Params { dbusClient = mclient
               void $ updatePropertyForAllItemInfos lens updateType prop
 
       makeUpdaterFromProp lens updateType prop
-                          signal@M.Signal { M.signalSender = Just sender} =
+                          signal@M.Signal { M.signalSender = Just sender } =
         runExceptT $
           ExceptT (runProperty prop sender) >>=
           lift . runUpdateOfProperty lens updateType sender
@@ -261,8 +269,10 @@ build Params { dbusClient = mclient
 
       handleNewPixmaps =
         makeUpdaterFromProp iconPixmapsL IconUpdated getPixmaps
+
       handleNewIconName =
         makeUpdaterFromProp iconNameL IconNameUpdated I.getIconName
+
       handleNewIcon signal = do
         newNameResult <- handleNewIconName signal
         newPixmapsResult <- handleNewPixmaps signal
@@ -291,11 +301,15 @@ build Params { dbusClient = mclient
       handleNewTooltip =
         logErrorsUpdater itemToolTipL ToolTipUpdated $ getMaybe I.getToolTip
 
+      handleNewStatus =
+        logErrorsUpdater itemStatusL StatusUpdated $ getMaybe I.getStatus
+
       clientRegistrationPairs =
         [ (I.registerForNewIcon, handleNewIcon)
         , (I.registerForNewTitle, handleNewTitle)
         , (I.registerForNewIconThemePath, handleNewIconThemePath)
         , (I.registerForNewToolTip, handleNewTooltip)
+        , (I.registerForNewStatus, handleNewStatus)
         ]
 
       initializeItemInfoMap = modifyMVar itemInfoMapVar $ \itemInfoMap -> do
