@@ -4,7 +4,7 @@ module StatusNotifier.Watcher.Service where
 import           Control.Arrow
 import           Control.Concurrent.MVar
 import           Control.Monad
-import           Control.Monad.Trans
+import           Control.Monad.Trans.Class
 import           Control.Monad.Trans.Except
 import           DBus
 import           DBus.Client

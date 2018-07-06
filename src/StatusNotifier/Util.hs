@@ -70,9 +70,13 @@ makeErrorReply :: ErrorName -> String -> Reply
 makeErrorReply e message = ReplyError e [T.toVariant message]
 
 logErrorWithDefault ::
-  Show a => Logger -> b -> String -> Either a b -> IO b
+  Show a => (Priority -> String -> IO ()) -> b -> String -> Either a b -> IO b
 logErrorWithDefault logger def message =
-  either (\err -> logL logger ERROR (message ++ show err) >> return def) return
+  fmap (fromMaybe def) . logEitherError logger message
+
+logEitherError :: Show a => (Priority -> String -> IO ()) -> String -> Either a b -> IO (Maybe b)
+logEitherError logger message =
+  either (\err -> logger ERROR (message ++ show err) >> return Nothing) (return . Just)
 
 exemptUnknownMethod ::
   b -> Either M.MethodError b -> Either M.MethodError b
@@ -119,3 +123,7 @@ getInterfaceAt
   -> IO (Either M.MethodError (Maybe I.Object))
 getInterfaceAt client bus path =
   right (I.parseXML "/") <$> introspect client bus path
+
+findM :: Monad m => (a -> m Bool) -> [a] -> m (Maybe a)
+findM p [] = return Nothing
+findM p (x:xs) = ifM (p x) (return $ Just x) (findM p xs)

@@ -4,13 +4,16 @@
 
 module StatusNotifier.Host.Service where
 
+import           Control.Applicative
 import           Control.Arrow
 import           Control.Concurrent
 import           Control.Concurrent.MVar
 import           Control.Lens
 import           Control.Lens.Tuple
 import           Control.Monad
-import           Control.Monad.Except
+import           Control.Monad.Trans.Class
+import           Control.Monad.Trans.Except
+import           Control.Monad.Trans.Maybe
 import           DBus
 import           DBus.Client
 import           DBus.Generation
@@ -48,7 +51,6 @@ data UpdateType
   = ItemAdded
   | ItemRemoved
   | IconUpdated
-  | IconNameUpdated
   | StatusUpdated
   | TitleUpdated
   | ToolTipUpdated deriving (Eq, Show)
@@ -60,6 +62,7 @@ data Params = Params
   , uniqueIdentifier :: String
   , namespace :: String
   , startWatcher :: Bool
+  , matchSenderWhenNameOwnersUnmatched :: Bool
   }
 
 hostLogger = logM "StatusNotifier.Host.Service"
@@ -69,6 +72,7 @@ defaultParams = Params
   , uniqueIdentifier = ""
   , namespace = "org.kde"
   , startWatcher = False
+  , matchSenderWhenNameOwnersUnmatched = True
   }
 
 type ImageInfo = [(Int32, Int32, BS.ByteString)]
@@ -111,6 +115,7 @@ build Params { dbusClient = mclient
              , namespace = namespaceString
              , uniqueIdentifier = uniqueID
              , startWatcher = shouldStartWatcher
+             , matchSenderWhenNameOwnersUnmatched = doMatchUnmatchedSender
              } = do
   client <- maybe connectSession return mclient
   itemInfoMapVar <- newMVar Map.empty
@@ -204,12 +209,12 @@ build Params { dbusClient = mclient
 
       handleItemRemoved serviceName =
         modifyMVar itemInfoMapVar doRemove >>=
-        maybe logNonExistantRemoval (doUpdate ItemRemoved)
+        maybe logNonExistentRemoval (doUpdate ItemRemoved)
         where
           busName = busName_ serviceName
           doRemove currentMap =
             return (Map.delete busName currentMap, Map.lookup busName currentMap)
-          logNonExistantRemoval =
+          logNonExistentRemoval =
             hostLogger WARNING $ printf "Attempt to remove unknown item %s" $
                        show busName
 
@@ -222,8 +227,6 @@ build Params { dbusClient = mclient
         logInfo (show s) >> fn sender
       getSender _ s = logError $ "Received signal with no sender: " ++ show s
 
-      logPropError = logErrorWithMessage "Error updating property: "
-
       runProperty prop serviceName =
         getObjectPathForItemName serviceName >>= prop client serviceName
 
@@ -232,77 +235,88 @@ build Params { dbusClient = mclient
                    printf "Got signal for update type: %s from unknown sender: %s"
                    (show updateType) (show signal)
 
-      logErrorsUpdater lens updateType prop signal =
-        makeUpdaterFromProp lens updateType prop signal >>=
-        either logPropError ((flip when logSenderErrorAndUpdateAll) . isNothing)
-          where
-            logSenderErrorAndUpdateAll = do
-              logUnknownSender updateType signal
-              void $ updatePropertyForAllItemInfos lens updateType prop
+      identifySender M.Signal { M.signalSender = Just sender
+                              , M.signalPath = senderPath
+                              } = do
+        infoMap <- readMVar itemInfoMapVar
+        let identifySenderBySender = return (Map.lookup sender infoMap)
+            identifySenderById = fmap join $
+              identifySenderById_ >>= logEitherError hostLogger "Failed to identify sender"
+            identifySenderById_ = runExceptT $ do
+              senderId <- ExceptT $ I.getId client sender senderPath
+              let matchesSender info =
+                    if itemId info == Just senderId
+                    then do
+                      senderNameOwner <- DTH.getNameOwner client (coerce sender)
+                      infoNameOwner <- DTH.getNameOwner client (coerce $ itemServiceName info)
+                      let warningMsg =
+                            "Matched sender id: %s, but name owners do not \
+                            \ match: %s %s. Considered match: %s."
+                          warningText = printf warningMsg
+                                        (show senderId)
+                                        (show senderNameOwner)
+                                        (show infoNameOwner)
+                      when (senderNameOwner /= infoNameOwner) $
+                           hostLogger WARNING warningText
+                      return doMatchUnmatchedSender
+                    else return False
+              lift $ findM matchesSender (Map.elems infoMap)
+        identifySenderBySender <||> identifySenderById
+        where a <||> b = runMaybeT $ MaybeT a <|> MaybeT b
+      identifySender _ = return Nothing
 
-      makeUpdaterFromProp lens updateType prop
-                          signal@M.Signal { M.signalSender = Just sender } =
-        runExceptT $
-          ExceptT (runProperty prop sender) >>=
-          lift . runUpdateOfProperty lens updateType sender
-      makeUpdaterFromProp _ _ _ _ = return $ Right Nothing
+      updateItemByLensAndProp lens prop busName = runExceptT $ do
+        newValue <- ExceptT (runProperty prop busName)
+        let modify infoMap =
+              -- This noops when the value is not present
+              let newMap = set (at busName . _Just . lens) newValue infoMap
+              in return (newMap, Map.lookup busName newMap)
+        ExceptT $ maybeToEither (methodError (Serial 0) errorFailed) <$>
+                modifyMVar itemInfoMapVar modify
 
-      runUpdateOfProperty lens updateType serviceName newValue = do
-        maybeServiceInfo <- modifyMVar itemInfoMapVar modify
-        whenJust maybeServiceInfo (doUpdate updateType)
-        return maybeServiceInfo
-          where
-            modify infoMap =
-              let newMap = set (at serviceName . _Just . lens) newValue infoMap
-              in return (newMap, Map.lookup serviceName newMap)
+      logErrorsHandler lens updateType prop =
+        runUpdaters [updateItemByLensAndProp lens prop] updateType
 
-      updatePropertyForAllItemInfos lens updateType prop = do
-        readMVar itemInfoMapVar >>= mapM (runUpdateForService . itemServiceName)
-        where runUpdateForService serviceName =
-                runProperty prop serviceName >>=
-                either (const $ return ())
-                       (void . runUpdateOfProperty lens updateType serviceName)
+      -- Run all the provided updaters with the expectation that at least one
+      -- will succeed.
+      runUpdatersForService updaters updateType serviceName = do
+        updateResults <- mapM ($ serviceName) updaters
+        let (failures, updates) = partitionEithers updateResults
+            logLevel = if null updates then ERROR else DEBUG
+        mapM_ (doUpdate updateType) updates
+        when (not $ null failures) $
+             hostLogger logLevel $ printf "Property update failures %s" $
+                        show failures
 
-      updateAllIcons =
-        updatePropertyForAllItemInfos iconPixmapsL IconUpdated getPixmaps >>
-        updatePropertyForAllItemInfos iconNameL IconNameUpdated I.getIconName
+      runUpdaters updaters updateType signal =
+        identifySender signal >>= maybe runForAll (runUpdateForService . itemServiceName)
+        where runUpdateForService = runUpdatersForService updaters updateType
+              runForAll = logUnknownSender updateType signal >>
+                          readMVar itemInfoMapVar >>=
+                          mapM_ runUpdateForService . Map.keys
 
-      handleNewPixmaps =
-        makeUpdaterFromProp iconPixmapsL IconUpdated getPixmaps
+      updateIconPixmaps =
+        updateItemByLensAndProp iconPixmapsL getPixmaps
 
-      handleNewIconName =
-        makeUpdaterFromProp iconNameL IconNameUpdated I.getIconName
+      updateIconName =
+        updateItemByLensAndProp iconNameL I.getIconName
 
-      handleNewIcon signal = do
-        newNameResult <- handleNewIconName signal
-        newPixmapsResult <- handleNewPixmaps signal
-        let remPD = right (fmap supressPixelData)
-            result = (remPD newNameResult, remPD newPixmapsResult)
-            debugLog = hostLogger DEBUG $ printf "Icon update results %s" (show result)
-            updateAll = logUnknownSender IconUpdated signal >> void updateAllIcons
-            gotProp = rights [newNameResult, newPixmapsResult]
-            fullSuccess = catMaybes gotProp
-        if null fullSuccess
-        then if null gotProp
-             then hostLogger WARNING $ printf
-                    "Failed to load new icon with either method %s"
-                    (show result)
-             else updateAll
-        else debugLog
+      handleNewIcon =
+        runUpdaters [updateIconPixmaps, updateIconName] IconUpdated
 
       getThemePathDefault client busName objectPath =
         right Just <$> I.getIconThemePath client busName objectPath
       handleNewIconThemePath =
-        logErrorsUpdater iconThemePathL IconUpdated getThemePathDefault
+        logErrorsHandler iconThemePathL IconUpdated getThemePathDefault
 
       handleNewTitle =
-        logErrorsUpdater iconTitleL TitleUpdated I.getTitle
+        logErrorsHandler iconTitleL TitleUpdated I.getTitle
 
       handleNewTooltip =
-        logErrorsUpdater itemToolTipL ToolTipUpdated $ getMaybe I.getToolTip
+        logErrorsHandler itemToolTipL ToolTipUpdated $ getMaybe I.getToolTip
 
       handleNewStatus =
-        logErrorsUpdater itemStatusL StatusUpdated $ getMaybe I.getStatus
+        logErrorsHandler itemStatusL StatusUpdated $ getMaybe I.getStatus
 
       clientRegistrationPairs =
         [ (I.registerForNewIcon, handleNewIcon)
