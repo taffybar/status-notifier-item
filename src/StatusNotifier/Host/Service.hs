@@ -87,7 +87,7 @@ data ItemInfo = ItemInfo
   , itemToolTip :: Maybe (String, ImageInfo, String, String)
   , iconTitle :: String
   , iconName :: String
-  , overlayIconName :: String
+  , overlayIconName :: Maybe String
   , iconThemePath :: Maybe String
   , iconPixmaps :: ImageInfo
   , overlayIconPixmaps :: ImageInfo
@@ -167,7 +167,7 @@ build Params { dbusClient = mclient
         pixmaps <- doGetDef [] $ getPixmaps I.getIconPixmap
         iName <- doGetDef name I.getIconName
         overlayPixmap <- doGetDef [] $ getPixmaps I.getOverlayIconPixmap
-        overlayIName <- doGetDef name I.getOverlayIconName
+        overlayIName <- doGetDef Nothing $ getMaybe I.getOverlayIconName
         themePath <- doGetDef Nothing $ getMaybe I.getIconThemePath
         menu <- doGetDef Nothing $ getMaybe I.getMenu
         title <- doGetDef "" I.getTitle
@@ -325,10 +325,12 @@ build Params { dbusClient = mclient
                     IconUpdated signal
 
       updateOverlayIconName =
-        updateItemByLensAndProp iconNameL I.getOverlayIconName
+        updateItemByLensAndProp overlayIconNameL $
+                                getMaybe I.getOverlayIconName
 
       updateOverlayIconPixmaps =
-        updateItemByLensAndProp iconPixmapsL $ getPixmaps I.getOverlayIconPixmap
+        updateItemByLensAndProp overlayIconPixmapsL $
+                                getPixmaps I.getOverlayIconPixmap
 
       handleNewOverlayIcon signal = do
         updateFromIconThemeFromSignal signal

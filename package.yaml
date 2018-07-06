@@ -1,5 +1,5 @@
 name:                status-notifier-item
-version:             0.2.2.2
+version:             0.3.0.0
 github:              "IvanMalison/status-notifier-item"
 license:             BSD3
 author:              "Ivan Malison"
@@ -48,6 +48,13 @@ executables:
     dependencies:
       - base >= 4.7 && < 5
       - dbus > 1.0
+      - status-notifier-item
+      - optparse-applicative
+    main: Main.hs
+  status-notifier-item-static:
+    source-dirs: ./item
+    dependencies:
+      - base >= 4.7 && < 5
       - status-notifier-item
       - optparse-applicative
     main: Main.hs

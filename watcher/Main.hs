@@ -61,7 +61,8 @@ main = do
   watcherParams <- join $ execParser $
                    info (helper <*> versionOption <*> watcherParamsParser)
                    (  fullDesc
-                   <> progDesc "Run a StatusNotifierWatcher")
+                   <> progDesc "Run a StatusNotifierWatcher"
+                   )
   stop <- newEmptyMVar
   (_, startWatcher) <- buildWatcher watcherParams { watcherStop = putMVar stop () }
   _ <- startWatcher
