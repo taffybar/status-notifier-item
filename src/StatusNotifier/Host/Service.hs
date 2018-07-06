@@ -51,6 +51,7 @@ data UpdateType
   = ItemAdded
   | ItemRemoved
   | IconUpdated
+  | OverlayIconUpdated
   | StatusUpdated
   | TitleUpdated
   | ToolTipUpdated deriving (Eq, Show)
@@ -82,11 +83,14 @@ data ItemInfo = ItemInfo
   , itemServicePath :: ObjectPath
   , itemId :: Maybe String
   , itemStatus :: Maybe String
+  , itemCategory :: Maybe String
   , itemToolTip :: Maybe (String, ImageInfo, String, String)
   , iconTitle :: String
   , iconName :: String
+  , overlayIconName :: String
   , iconThemePath :: Maybe String
   , iconPixmaps :: ImageInfo
+  , overlayIconPixmaps :: ImageInfo
   , menuPath :: Maybe ObjectPath
   } deriving (Eq, Show)
 
@@ -148,8 +152,8 @@ build Params { dbusClient = mclient
       removeHandler unique =
         modifyMVar_ updateHandlersVar (return . filter ((/= unique) . fst))
 
-      getPixmaps a1 a2 a3 = fmap convertPixmapsToHostByteOrder <$>
-                            I.getIconPixmap a1 a2 a3
+      getPixmaps getter a1 a2 a3 =
+        fmap convertPixmapsToHostByteOrder <$> getter a1 a2 a3
 
       getMaybe fn a b c = right Just <$> fn a b c
 
@@ -160,18 +164,22 @@ build Params { dbusClient = mclient
             doGetDef def fn =
               ExceptT $ exemptAll def <$> fn client busName path
             doGet fn = ExceptT $ fn client busName path
-        pixmaps <- doGetDef [] getPixmaps
+        pixmaps <- doGetDef [] $ getPixmaps I.getIconPixmap
         iName <- doGetDef name I.getIconName
+        overlayPixmap <- doGetDef [] $ getPixmaps I.getOverlayIconPixmap
+        overlayIName <- doGetDef name I.getOverlayIconName
         themePath <- doGetDef Nothing $ getMaybe I.getIconThemePath
         menu <- doGetDef Nothing $ getMaybe I.getMenu
         title <- doGetDef "" I.getTitle
         tooltip <- doGetDef Nothing $ getMaybe I.getToolTip
         idString <- doGetDef Nothing $ getMaybe I.getId
         status <- doGetDef Nothing $ getMaybe I.getStatus
+        category <- doGetDef Nothing $ getMaybe I.getCategory
         return ItemInfo
                  { itemServiceName = busName_ name
                  , itemId = idString
                  , itemStatus = status
+                 , itemCategory = category
                  , itemServicePath = path
                  , itemToolTip = tooltip
                  , iconPixmaps = pixmaps
@@ -179,6 +187,8 @@ build Params { dbusClient = mclient
                  , iconName = iName
                  , iconTitle = title
                  , menuPath = menu
+                 , overlayIconName = overlayIName
+                 , overlayIconPixmaps = overlayPixmap
                  }
 
       createAll serviceNames = do
@@ -296,18 +306,37 @@ build Params { dbusClient = mclient
                           mapM_ runUpdateForService . Map.keys
 
       updateIconPixmaps =
-        updateItemByLensAndProp iconPixmapsL getPixmaps
+        updateItemByLensAndProp iconPixmapsL $ getPixmaps I.getIconPixmap
 
       updateIconName =
         updateItemByLensAndProp iconNameL I.getIconName
 
-      handleNewIcon =
-        runUpdaters [updateIconPixmaps, updateIconName] IconUpdated
+      updateIconTheme =
+        updateItemByLensAndProp iconThemePathL getThemePathDefault
+
+      updateFromIconThemeFromSignal signal =
+        identifySender signal >>= traverse (updateIconTheme . itemServiceName)
+
+      handleNewIcon signal = do
+        -- XXX: This avoids the case where the theme path is updated before the
+        -- icon name is updated when both signals are sent simultaneously
+        updateFromIconThemeFromSignal signal
+        runUpdaters [updateIconPixmaps, updateIconName]
+                    IconUpdated signal
+
+      updateOverlayIconName =
+        updateItemByLensAndProp iconNameL I.getOverlayIconName
+
+      updateOverlayIconPixmaps =
+        updateItemByLensAndProp iconPixmapsL $ getPixmaps I.getOverlayIconPixmap
+
+      handleNewOverlayIcon signal = do
+        updateFromIconThemeFromSignal signal
+        runUpdaters [updateOverlayIconPixmaps, updateOverlayIconName]
+                    OverlayIconUpdated signal
 
       getThemePathDefault client busName objectPath =
         right Just <$> I.getIconThemePath client busName objectPath
-      handleNewIconThemePath =
-        logErrorsHandler iconThemePathL IconUpdated getThemePathDefault
 
       handleNewTitle =
         logErrorsHandler iconTitleL TitleUpdated I.getTitle
@@ -320,8 +349,9 @@ build Params { dbusClient = mclient
 
       clientRegistrationPairs =
         [ (I.registerForNewIcon, handleNewIcon)
+        , (I.registerForNewIconThemePath, handleNewIcon)
+        , (I.registerForNewOverlayIcon, handleNewOverlayIcon)
         , (I.registerForNewTitle, handleNewTitle)
-        , (I.registerForNewIconThemePath, handleNewIconThemePath)
         , (I.registerForNewToolTip, handleNewTooltip)
         , (I.registerForNewStatus, handleNewStatus)
         ]
