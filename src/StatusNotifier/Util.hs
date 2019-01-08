@@ -17,13 +17,14 @@ import           Data.Word
 import           Language.Haskell.TH
 import           Network.Socket (ntohl)
 import           StatusNotifier.TH
-import qualified Data.Text.IO as TIO
-import           Data.Text (pack)
+import           System.IO
+import           System.IO.Unsafe
+import           System.Log.Handler.Simple
 import           System.Log.Logger
 
 getIntrospectionObjectFromFile :: FilePath -> T.ObjectPath -> Q I.Object
 getIntrospectionObjectFromFile filepath nodePath = runIO $
-  head . maybeToList . I.parseXML nodePath <$> TIO.readFile filepath
+  head . maybeToList . I.parseXML nodePath <$> readFile filepath
 
 generateClientFromFile :: G.GenerationParams -> Bool -> FilePath -> Q [Dec]
 generateClientFromFile params useObjectPath filepath = do
@@ -121,7 +122,7 @@ getInterfaceAt
   -> T.ObjectPath
   -> IO (Either M.MethodError (Maybe I.Object))
 getInterfaceAt client bus path =
-  right (I.parseXML "/" . pack) <$> introspect client bus path
+  right (I.parseXML "/") <$> introspect client bus path
 
 findM :: Monad m => (a -> m Bool) -> [a] -> m (Maybe a)
 findM p [] = return Nothing
