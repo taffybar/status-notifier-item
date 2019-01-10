@@ -2,7 +2,7 @@ resolver: lts-11.7
 packages:
 - .
 extra-deps:
-- dbus-1.0.1
+- dbus-1.2.1
 - dbus-hslogger-0.1.0.1
 - spool-0.1
 nix:
