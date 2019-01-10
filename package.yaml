@@ -23,7 +23,7 @@ library:
     - bytestring
     - text
     - containers
-    - dbus >= 1.0.0 && < 2.0.0
+    - dbus >= 1.2.1 && < 2.0.0
     - filepath
     - hslogger
     - lens
