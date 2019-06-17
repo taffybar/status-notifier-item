@@ -7,5 +7,6 @@ extra-deps:
 - spool-0.1
 nix:
   packages:
+    - zlib
     - libxml2
     - pkgconfig
