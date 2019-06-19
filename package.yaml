@@ -1,5 +1,5 @@
 name:                status-notifier-item
-version:             0.3.0.2
+version:             0.3.0.3
 github:              "IvanMalison/status-notifier-item"
 license:             BSD3
 author:              "Ivan Malison"
@@ -27,7 +27,7 @@ library:
     - filepath
     - hslogger
     - lens
-    - network
+    - network < 3.0.0.0
     - template-haskell
     - text
     - transformers
