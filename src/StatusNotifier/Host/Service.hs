@@ -1,7 +1,7 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
-
+{-# LANGUAGE RecordWildCards #-}
 module StatusNotifier.Host.Service where
 
 import           Control.Applicative
@@ -208,10 +208,13 @@ build Params { dbusClient = mclient
       handleItemAdded serviceName =
         modifyMVar_ itemInfoMapVar $ \itemInfoMap ->
           buildItemInfo serviceName >>=
-                        either (logErrorAndThen $ return itemInfoMap)
-                                 (addItemInfo itemInfoMap)
-          where addItemInfo map itemInfo = doUpdate ItemAdded itemInfo >>
-                  return (Map.insert (itemServiceName itemInfo) itemInfo map)
+          either (logErrorAndThen $ return itemInfoMap)
+                 (addItemInfo itemInfoMap)
+          where addItemInfo map itemInfo@ItemInfo{..} =
+                  if Map.member itemServiceName map
+                  then return map
+                  else doUpdate ItemAdded itemInfo >>
+                       return (Map.insert itemServiceName itemInfo map)
 
       getObjectPathForItemName name =
         maybe I.defaultPath itemServicePath . Map.lookup name <$>
@@ -359,7 +362,7 @@ build Params { dbusClient = mclient
         ]
 
       initializeItemInfoMap = modifyMVar itemInfoMapVar $ \itemInfoMap -> do
-        -- All initialization is done inside this modifyMvar to avoid race
+        -- All initialization is done inside this modifyMVar to avoid race
         -- conditions with the itemInfoMapVar.
         clientSignalHandlers <- registerWithPairs clientRegistrationPairs
         watcherSignalHandlers <- registerWithPairs watcherRegistrationPairs
@@ -376,10 +379,7 @@ build Params { dbusClient = mclient
             finishInitialization serviceNames = do
               itemInfos <- createAll serviceNames
               let newMap = Map.fromList $ map (itemServiceName &&& id) itemInfos
-                  -- Extra paranoia about the map
-                  resultMap = if Map.null itemInfoMap
-                              then newMap
-                              else Map.union itemInfoMap newMap
+                  resultMap = Map.union itemInfoMap newMap
               W.registerStatusNotifierHost client busName >>=
                either logErrorAndShutdown (const $ return (resultMap, True))
         W.getRegisteredStatusNotifierItems client >>=
