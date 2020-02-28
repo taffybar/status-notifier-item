@@ -15,10 +15,10 @@ import qualified Data.Vector.Storable as VS
 import           Data.Vector.Storable.ByteString
 import           Data.Word
 import           Language.Haskell.TH
-import           Network.Socket (ntohl)
 import           StatusNotifier.TH
 import qualified Data.Text.IO as TIO
 import           Data.Text (pack)
+import           System.ByteOrder (fromBigEndian)
 import           System.Log.Logger
 
 getIntrospectionObjectFromFile :: FilePath -> T.ObjectPath -> Q I.Object
@@ -60,7 +60,7 @@ convertARGBToABGR bits = (blue `shift` 16) .|. (red `shift` (-16)) .|. green .|.
 
 networkToSystemByteOrder :: BS.ByteString -> BS.ByteString
 networkToSystemByteOrder original =
-  vectorToByteString $ VS.map (convertARGBToABGR . ntohl) $ byteStringToVector original
+  vectorToByteString $ VS.map (convertARGBToABGR . fromBigEndian) $ byteStringToVector original
 
 maybeToEither :: b -> Maybe a -> Either b a
 maybeToEither = flip maybe Right . Left
