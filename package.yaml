@@ -20,6 +20,7 @@ library:
   source-dirs: src
   dependencies:
     - base >= 4.7 && < 5
+    - byte-order
     - bytestring
     - bytestring-to-vector
     - containers
@@ -27,7 +28,6 @@ library:
     - filepath
     - hslogger
     - lens
-    - network < 3.0.0.0
     - template-haskell
     - text
     - transformers
