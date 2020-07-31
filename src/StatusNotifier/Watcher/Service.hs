@@ -111,7 +111,7 @@ buildWatcher WatcherParams
 
       isStatusNotifierHostRegistered = not . null <$> readMVar notifierHosts
 
-      protocolVersion = return 1 :: IO Int32
+      protocolVersion = return 0 :: IO Int32
 
       filterDeadService :: String -> MVar [ItemEntry] -> IO [ItemEntry]
       filterDeadService deadService mvar = modifyMVar mvar $
