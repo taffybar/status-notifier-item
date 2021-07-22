@@ -92,6 +92,7 @@ data ItemInfo = ItemInfo
   , iconPixmaps :: ImageInfo
   , overlayIconPixmaps :: ImageInfo
   , menuPath :: Maybe ObjectPath
+  , itemIsMenu :: Bool
   } deriving (Eq, Show)
 
 supressPixelData info =
@@ -175,6 +176,7 @@ build Params { dbusClient = mclient
         idString <- doGetDef Nothing $ getMaybe I.getId
         status <- doGetDef Nothing $ getMaybe I.getStatus
         category <- doGetDef Nothing $ getMaybe I.getCategory
+        itemIsMenu <- doGetDef False I.getItemIsMenu
         return ItemInfo
                  { itemServiceName = busName_ name
                  , itemId = idString
@@ -189,6 +191,7 @@ build Params { dbusClient = mclient
                  , menuPath = menu
                  , overlayIconName = overlayIName
                  , overlayIconPixmaps = overlayPixmap
+                 , itemIsMenu = itemIsMenu
                  }
 
       createAll serviceNames = do
