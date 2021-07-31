@@ -176,7 +176,7 @@ build Params { dbusClient = mclient
         idString <- doGetDef Nothing $ getMaybe I.getId
         status <- doGetDef Nothing $ getMaybe I.getStatus
         category <- doGetDef Nothing $ getMaybe I.getCategory
-        itemIsMenu <- doGetDef False I.getItemIsMenu
+        itemIsMenu <- doGetDef True I.getItemIsMenu
         return ItemInfo
                  { itemServiceName = busName_ name
                  , itemId = idString
