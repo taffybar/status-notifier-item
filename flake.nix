@@ -2,7 +2,7 @@
   description = "status-notifier-item";
   inputs = {
     flake-utils.url = "github:numtide/flake-utils";
-    git-ignore-nix.url = "github:IvanMalison/gitignore.nix/master";
+    git-ignore-nix.url = github:hercules-ci/gitignore.nix/master;
   };
   outputs = { self, flake-utils, nixpkgs, git-ignore-nix }:
   let
@@ -12,7 +12,7 @@
         (hself: hsuper: {
           status-notifier-item =
             hself.callCabal2nix "status-notifier-item"
-            (git-ignore-nix.gitIgnoreSource ./.)
+            (git-ignore-nix.lib.gitignoreSource ./.)
             { };
         });
       });
