@@ -24,6 +24,9 @@
   rec {
     devShell = pkgs.haskellPackages.shellFor {
       packages = p: [ p.status-notifier-item ];
+      buildInputs = [
+        pkgs.zlib.dev
+      ];
     };
     defaultPackage = pkgs.haskellPackages.status-notifier-item;
   }) // { inherit overlay overlays; } ;

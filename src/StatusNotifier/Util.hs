@@ -21,6 +21,13 @@ import           Data.Text (pack)
 import           System.ByteOrder (fromBigEndian)
 import           System.Log.Logger
 
+splitServiceName :: String -> (String, Maybe String)
+splitServiceName name =
+  case break (=='/') name of
+    (bus, "") -> (bus, Nothing)
+    (bus, path) | not (null bus) -> (bus, Just path)
+    _ -> (name, Nothing)
+
 getIntrospectionObjectFromFile :: FilePath -> T.ObjectPath -> Q I.Object
 getIntrospectionObjectFromFile filepath nodePath = runIO $
   head . maybeToList . I.parseXML nodePath <$> TIO.readFile filepath

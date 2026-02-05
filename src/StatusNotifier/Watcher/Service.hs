@@ -50,6 +50,15 @@ buildWatcher WatcherParams
 
   let itemIsRegistered item items =
         isJust $ find (== item) items
+      renderServiceName ItemEntry { serviceName = busName
+                                  , servicePath = path
+                                  } =
+        let bus = coerce busName
+            objPath = coerce path
+            defaultPath = coerce Item.defaultPath
+        in if objPath == defaultPath
+           then bus
+           else bus ++ objPath
 
       registerStatusNotifierItem MethodCall
                                    { methodCallSender = sender }
@@ -75,7 +84,7 @@ buildWatcher WatcherParams
             return currentItems
           else
             do
-              emitStatusNotifierItemRegistered client $ coerce busName
+              emitStatusNotifierItemRegistered client $ renderServiceName item
               return $ item : currentItems
 
       registerStatusNotifierHost name =
@@ -93,7 +102,7 @@ buildWatcher WatcherParams
 
       registeredStatusNotifierItems :: IO [String]
       registeredStatusNotifierItems =
-        map (coerce . serviceName) <$> readMVar notifierItems
+        map renderServiceName <$> readMVar notifierItems
 
       registeredSNIEntries :: IO [(String, String)]
       registeredSNIEntries =
@@ -102,9 +111,12 @@ buildWatcher WatcherParams
 
       objectPathForItem :: String -> IO (Either Reply String)
       objectPathForItem name =
-        maybeToEither notFoundError .  fmap (coerce . servicePath) .
-                      find ((== busName_ name) . serviceName) <$>
-                      readMVar notifierItems
+        case splitServiceName name of
+          (_, Just path) -> return $ Right path
+          (bus, Nothing) ->
+            maybeToEither notFoundError . fmap (coerce . servicePath) .
+            find ((== busName_ bus) . serviceName) <$>
+            readMVar notifierItems
         where notFoundError =
                 makeErrorReply errorInvalidParameters $
                 printf "Service %s is not registered." name
@@ -122,7 +134,8 @@ buildWatcher WatcherParams
           removedItems <- filterDeadService name notifierItems
           unless (null removedItems) $ do
             log $ printf "Unregistering item %s because it disappeared." name
-            emitStatusNotifierItemUnregistered client name
+            forM_ removedItems $ \item ->
+              emitStatusNotifierItemUnregistered client $ renderServiceName item
           removedHosts <- filterDeadService name notifierHosts
           unless (null removedHosts) $
             log $ printf "Unregistering host %s because it disappeared." name

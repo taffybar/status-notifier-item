@@ -158,11 +158,17 @@ build Params { dbusClient = mclient
 
       getMaybe fn a b c = right Just <$> fn a b c
 
+      parseServiceName name =
+        let (bus, maybePath) = splitServiceName name
+        in (busName_ bus, objectPath_ <$> maybePath)
+
       buildItemInfo name = runExceptT $ do
-        pathString <- ExceptT $ W.getObjectPathForItemName client name
-        let busName = fromString name
-            path = objectPath_ pathString
-            doGetDef def fn =
+        let (busName, maybePath) = parseServiceName name
+        path <- case maybePath of
+          Just parsedPath -> return parsedPath
+          Nothing -> objectPath_ <$> ExceptT
+            (W.getObjectPathForItemName client (coerce busName))
+        let doGetDef def fn =
               ExceptT $ exemptAll def <$> fn client busName path
             doGet fn = ExceptT $ fn client busName path
         pixmaps <- doGetDef [] $ getPixmaps I.getIconPixmap
@@ -178,7 +184,7 @@ build Params { dbusClient = mclient
         category <- doGetDef Nothing $ getMaybe I.getCategory
         itemIsMenu <- doGetDef True I.getItemIsMenu
         return ItemInfo
-                 { itemServiceName = busName_ name
+                 { itemServiceName = busName
                  , itemId = idString
                  , itemStatus = status
                  , itemCategory = category
@@ -227,7 +233,7 @@ build Params { dbusClient = mclient
         modifyMVar itemInfoMapVar doRemove >>=
         maybe logNonExistentRemoval (doUpdate ItemRemoved)
         where
-          busName = busName_ serviceName
+          busName = fst (parseServiceName serviceName)
           doRemove currentMap =
             return (Map.delete busName currentMap, Map.lookup busName currentMap)
           logNonExistentRemoval =
