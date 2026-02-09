@@ -262,8 +262,25 @@ build Params { dbusClient = mclient
                               } = do
         infoMap <- readMVar itemInfoMapVar
         let identifySenderBySender = return (Map.lookup sender infoMap)
+            identifySenderByNameOwner =
+              let matchByOwner info = do
+                    ownerResult <- DTH.getNameOwner client
+                                   (coerce $ itemServiceName info)
+                    return $ case ownerResult of
+                      Right owner -> owner == coerce sender
+                      Left _ -> False
+              in findM matchByOwner (Map.elems infoMap)
             identifySenderById = fmap join $
-              identifySenderById_ >>= logEitherError hostLogger "Failed to identify sender"
+              identifySenderById_ >>= logIdentifyByIdResult
+            logIdentifyByIdResult
+              (Left M.MethodError { M.methodErrorName = errName })
+              | errName == errorUnknownMethod =
+                  hostLogger DEBUG
+                    (printf "Item does not support getId: %s"
+                      (show errName)) >>
+                  return Nothing
+            logIdentifyByIdResult result =
+              logEitherError hostLogger "Failed to identify sender" result
             identifySenderById_ = runExceptT $ do
               senderId <- ExceptT $ I.getId client sender senderPath
               let matchesSender info =
@@ -283,7 +300,7 @@ build Params { dbusClient = mclient
                       return doMatchUnmatchedSender
                     else return False
               lift $ findM matchesSender (Map.elems infoMap)
-        identifySenderBySender <||> identifySenderById
+        identifySenderBySender <||> identifySenderByNameOwner <||> identifySenderById
         where a <||> b = runMaybeT $ MaybeT a <|> MaybeT b
       identifySender _ = return Nothing
 
@@ -304,7 +321,12 @@ build Params { dbusClient = mclient
       runUpdatersForService updaters updateType serviceName = do
         updateResults <- mapM ($ serviceName) updaters
         let (failures, updates) = partitionEithers updateResults
-            logLevel = if null updates then ERROR else DEBUG
+            isInvalidArgs M.MethodError { M.methodErrorName = errName } =
+              errName == errorName_ "org.freedesktop.DBus.Error.InvalidArgs"
+            logLevel
+              | not (null updates) = DEBUG
+              | all isInvalidArgs failures = DEBUG
+              | otherwise = ERROR
         mapM_ (doUpdate updateType) updates
         when (not $ null failures) $
              hostLogger logLevel $ printf "Property update failures %s" $

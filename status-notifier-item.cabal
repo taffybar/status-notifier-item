@@ -1,11 +1,11 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.38.3.
 --
 -- see: https://github.com/sol/hpack
 
 name:           status-notifier-item
-version:        0.3.2.0
+version:        0.3.2.1
 synopsis:       A wrapper over the StatusNotifierItem/libappindicator dbus specification
 description:    Please see the README on Github at <https://github.com/IvanMalison/status-notifier-item#readme>
 category:       Desktop
