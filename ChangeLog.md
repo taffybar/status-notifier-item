@@ -1,5 +1,13 @@
 # Changelog for status-notifier-item
 
+## 0.3.2.2 - 2026-02-11
+- Fix watcher registration ownership checks by requiring explicit service-name
+  registrations to be initiated by the current owner.
+- Fix watcher duplicate handling by coalescing path-first and name-first
+  registrations from the same sender/path pair.
+- Add an isolated DBus integration test suite covering watcher/host behavior
+  and regression tests for registration ownership and deduplication.
+
 ## 0.3.2.1 - 2026-02-09
 - Add name-owner resolution fallback for signal sender identification, fixing
   noisy errors when items register under well-known bus names.

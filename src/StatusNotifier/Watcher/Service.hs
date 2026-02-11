@@ -63,27 +63,50 @@ buildWatcher WatcherParams
       registerStatusNotifierItem MethodCall
                                    { methodCallSender = sender }
                                  name = runExceptT $ do
-        let maybeBusName = getFirst $ mconcat $
-                           map First [T.parseBusName name, sender]
+        let parsedBusName = T.parseBusName name
             parseServiceError = makeErrorReply errorInvalidParameters $
               printf "the provided service %s could not be parsed \
                      \as a bus name or an object path." name
+            senderMissingError = makeErrorReply errorInvalidParameters $
+              "Unable to identify sender for registration."
             path = fromMaybe Item.defaultPath $ T.parseObjectPath name
             remapErrorName =
               left $ (`makeErrorReply` "Failed to verify ownership.") .
                    M.methodErrorName
-        busName <- ExceptT $ return $ maybeToEither parseServiceError maybeBusName
+            resolveOwner bus
+              | ":" `isPrefixOf` (coerce bus :: String) = return (Just bus)
+              | otherwise = do
+                  result <- DBusTH.getNameOwner client (coerce bus)
+                  return $ busName_ <$> either (const Nothing) Just result
+        when (isNothing parsedBusName && isNothing (T.parseObjectPath name)) $
+          throwE parseServiceError
+        senderName <- ExceptT $ return $ maybeToEither senderMissingError sender
+        busName <-
+          case parsedBusName of
+            Just providedBusName -> do
+              owner <- ExceptT $ remapErrorName <$>
+                       DBusTH.getNameOwner client (coerce providedBusName)
+              unless (owner == coerce senderName) $
+                throwE $ makeErrorReply errorInvalidParameters $
+                  printf "Sender %s does not own service %s."
+                    (coerce senderName :: String)
+                    name
+              return providedBusName
+            Nothing -> return senderName
         let item = ItemEntry { serviceName = busName
                              , servicePath = path
                              }
-        hasOwner <- ExceptT $ remapErrorName <$>
-                    DBusTH.nameHasOwner client (coerce busName)
         lift $ modifyMVar_ notifierItems $ \currentItems ->
-          if itemIsRegistered item currentItems
-          then
-            return currentItems
-          else
-            do
+          do
+            ownerPathMatches <- filterM (\existingItem ->
+              if servicePath existingItem == path
+              then do
+                existingOwner <- resolveOwner (serviceName existingItem)
+                return $ existingOwner == Just senderName
+              else return False) currentItems
+            if itemIsRegistered item currentItems || not (null ownerPathMatches)
+            then return currentItems
+            else do
               emitStatusNotifierItemRegistered client $ renderServiceName item
               return $ item : currentItems
 
