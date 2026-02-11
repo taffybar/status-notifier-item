@@ -9,7 +9,10 @@ import Data.List (sort)
 import qualified Data.Map.Strict as Map
 import DBus (busName_)
 import DBus.Client
+import qualified DBus.Internal.Message as M
+import DBus.Internal.Types (ErrorName, Serial (..), errorName_)
 import StatusNotifier.Host.Service hiding (startWatcher)
+import System.Log.Logger (Priority (..))
 import System.Timeout (timeout)
 import Test.Hspec
 
@@ -132,5 +135,39 @@ spec = around withIsolatedSessionBus $ do
       current <- itemInfoMap host
       Map.null current `shouldBe` True
 
+  describe "propertyUpdateFailureLogLevel" $ do
+    it "returns DEBUG when there are successful updates" $ do
+      let failures = [mkMethodError DBus.Client.errorFailed]
+      propertyUpdateFailureLogLevel failures [()]
+        `shouldBe` DEBUG
+
+    it "returns DEBUG when all failures are UnknownMethod" $ do
+      let failures = [mkMethodError DBus.Client.errorUnknownMethod]
+      propertyUpdateFailureLogLevel failures ([] :: [()])
+        `shouldBe` DEBUG
+
+    it "returns DEBUG when all failures are InvalidArgs" $ do
+      let failures = [mkMethodError errorInvalidArgs]
+      propertyUpdateFailureLogLevel failures ([] :: [()])
+        `shouldBe` DEBUG
+
+    it "returns ERROR for unexpected failures with no successful updates" $ do
+      let failures = [mkMethodError DBus.Client.errorFailed]
+      propertyUpdateFailureLogLevel failures ([] :: [()])
+        `shouldBe` ERROR
+
 defaultPath :: String
 defaultPath = "/StatusNotifierItem"
+
+mkMethodError :: ErrorName -> M.MethodError
+mkMethodError errName =
+  M.MethodError
+    { M.methodErrorName = errName
+    , M.methodErrorSerial = Serial 0
+    , M.methodErrorSender = Nothing
+    , M.methodErrorDestination = Nothing
+    , M.methodErrorBody = []
+    }
+
+errorInvalidArgs :: ErrorName
+errorInvalidArgs = errorName_ "org.freedesktop.DBus.Error.InvalidArgs"

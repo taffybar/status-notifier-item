@@ -78,6 +78,17 @@ defaultParams = Params
 
 type ImageInfo = [(Int32, Int32, BS.ByteString)]
 
+isExpectedPropertyUpdateFailure :: M.MethodError -> Bool
+isExpectedPropertyUpdateFailure M.MethodError { M.methodErrorName = errName } =
+  errName == errorUnknownMethod ||
+  errName == errorName_ "org.freedesktop.DBus.Error.InvalidArgs"
+
+propertyUpdateFailureLogLevel :: [M.MethodError] -> [a] -> Priority
+propertyUpdateFailureLogLevel failures updates
+  | not (null updates) = DEBUG
+  | all isExpectedPropertyUpdateFailure failures = DEBUG
+  | otherwise = ERROR
+
 data ItemInfo = ItemInfo
   { itemServiceName :: BusName
   , itemServicePath :: ObjectPath
@@ -253,7 +264,7 @@ build Params { dbusClient = mclient
         getObjectPathForItemName serviceName >>= prop client serviceName
 
       logUnknownSender updateType signal =
-        hostLogger WARNING $
+        hostLogger DEBUG $
                    printf "Got signal for update type: %s from unknown sender: %s"
                    (show updateType) (show signal)
 
@@ -321,12 +332,7 @@ build Params { dbusClient = mclient
       runUpdatersForService updaters updateType serviceName = do
         updateResults <- mapM ($ serviceName) updaters
         let (failures, updates) = partitionEithers updateResults
-            isInvalidArgs M.MethodError { M.methodErrorName = errName } =
-              errName == errorName_ "org.freedesktop.DBus.Error.InvalidArgs"
-            logLevel
-              | not (null updates) = DEBUG
-              | all isInvalidArgs failures = DEBUG
-              | otherwise = ERROR
+            logLevel = propertyUpdateFailureLogLevel failures updates
         mapM_ (doUpdate updateType) updates
         when (not $ null failures) $
              hostLogger logLevel $ printf "Property update failures %s" $

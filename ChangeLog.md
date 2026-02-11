@@ -1,5 +1,13 @@
 # Changelog for status-notifier-item
 
+## 0.3.2.3 - 2026-02-11
+- Downgrade unknown-sender update logs from WARNING to DEBUG to avoid noisy
+  false alarms for routine tray signals.
+- Treat UnknownMethod property refresh failures as expected optional-property
+  misses (same as InvalidArgs), logging them at DEBUG unless no updater
+  succeeded.
+- Add host tests for property update failure log-level classification.
+
 ## 0.3.2.2 - 2026-02-11
 - Fix watcher registration ownership checks by requiring explicit service-name
   registrations to be initiated by the current owner.
