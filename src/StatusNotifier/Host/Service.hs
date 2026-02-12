@@ -225,16 +225,54 @@ build Params { dbusClient = mclient
               clientSignalRegister signalRegisterFn handler =
                 signalRegisterFn client matchAny handler logUnableToCallSignal
 
+      -- Resolve a bus name to its unique name owner when it is well-known.
+      -- For unique names (":1.42"), the owner is the name itself.
+      resolveOwner :: BusName -> IO (Maybe BusName)
+      resolveOwner bus =
+        case (coerce bus :: String) of
+          ':' : _ -> pure (Just bus)
+          _ ->
+            either (const Nothing) (Just . busName_) <$>
+              DTH.getNameOwner client (coerce bus)
+
       handleItemAdded serviceName =
         modifyMVar_ itemInfoMapVar $ \itemInfoMap ->
           buildItemInfo serviceName >>=
           either (logErrorAndThen $ return itemInfoMap)
                  (addItemInfo itemInfoMap)
-          where addItemInfo map itemInfo@ItemInfo{..} =
-                  if Map.member itemServiceName map
+          where addItemInfo map itemInfo@ItemInfo{ itemServiceName = newName
+                                                 , itemServicePath = newPath
+                                                 } =
+                  if Map.member newName map
                   then return map
-                  else doUpdate ItemAdded itemInfo >>
-                       return (Map.insert itemServiceName itemInfo map)
+                  else do
+                    -- When the watcher restarts, some items may re-register
+                    -- under a different bus name (e.g. switching between
+                    -- unique name and a well-known name). Detect that by
+                    -- matching on the item's unique name owner, and replace
+                    -- the existing entry rather than creating a duplicate.
+                    newOwner <- resolveOwner newName
+                    let matchesOwnerAndPath (existingName, existingInfo) = do
+                          existingOwner <- resolveOwner existingName
+                          pure $
+                            existingName /= newName
+                              && existingOwner == newOwner
+                              && itemServicePath existingInfo == newPath
+                        addFresh = do
+                          doUpdate ItemAdded itemInfo
+                          pure (Map.insert newName itemInfo map)
+                    case newOwner of
+                      Nothing -> addFresh
+                      Just _ -> do
+                        existing <- findM matchesOwnerAndPath (Map.toList map)
+                        case existing of
+                          Nothing -> addFresh
+                          Just (existingName, existingInfo) -> do
+                            doUpdate ItemRemoved existingInfo
+                            doUpdate ItemAdded itemInfo
+                            pure $
+                              Map.insert newName itemInfo $
+                                Map.delete existingName map
 
       getObjectPathForItemName name =
         maybe I.defaultPath itemServicePath . Map.lookup name <$>

@@ -1,5 +1,11 @@
 # Changelog for status-notifier-item
 
+## 0.3.2.4 - 2026-02-12
+- Host: deduplicate items that re-register under a different bus name after a
+  watcher restart (e.g. unique name vs well-known name), preventing duplicate
+  tray icons.
+- Add a regression test for watcher-restart re-registration deduplication.
+
 ## 0.3.2.3 - 2026-02-11
 - Downgrade unknown-sender update logs from WARNING to DEBUG to avoid noisy
   false alarms for routine tray signals.

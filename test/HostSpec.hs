@@ -7,11 +7,12 @@ import Control.Exception (finally)
 import Control.Monad (replicateM)
 import Data.List (sort)
 import qualified Data.Map.Strict as Map
-import DBus (busName_)
+import DBus (busName_, objectPath_)
 import DBus.Client
 import qualified DBus.Internal.Message as M
 import DBus.Internal.Types (ErrorName, Serial (..), errorName_)
 import StatusNotifier.Host.Service hiding (startWatcher)
+import qualified StatusNotifier.Watcher.Client as WatcherClient
 import System.Log.Logger (Priority (..))
 import System.Timeout (timeout)
 import Test.Hspec
@@ -134,6 +135,64 @@ spec = around withIsolatedSessionBus $ do
       noEvent `shouldBe` Nothing
       current <- itemInfoMap host
       Map.null current `shouldBe` True
+
+    it "deduplicates an item that re-registers under a different bus name after watcher restart" $ \() -> do
+      watcher1 <- startWatcher
+
+      itemClient <- connectSession
+      let iface =
+            Interface
+              { interfaceName = "org.kde.StatusNotifierItem"
+              , interfaceMethods = []
+              , interfaceProperties =
+                  [ readOnlyProperty "IconName" (pure ("folder" :: String))
+                  , readOnlyProperty "OverlayIconName" (pure ("" :: String))
+                  , readOnlyProperty "ItemIsMenu" (pure False)
+                  ]
+              , interfaceSignals = []
+              }
+          defaultPath = "/StatusNotifierItem"
+      export itemClient (objectPath_ defaultPath) iface
+      _ <- requestName itemClient (busName_ "org.test.RestartRereg") []
+
+      -- First register by path only; watcher will store the sender unique name.
+      WatcherClient.registerStatusNotifierItem itemClient defaultPath
+        `shouldReturn` Right ()
+
+      hostClient <- connectSession
+      Just host <- build defaultParams {dbusClient = Just hostClient, uniqueIdentifier = "host-h"}
+
+      initialReady <-
+        waitFor 1500000 $ do
+          current <- itemInfoMap host
+          pure $ Map.size current == 1
+      initialReady `shouldBe` True
+      initialMap <- itemInfoMap host
+      let initialKeys = Map.keys initialMap
+      length initialKeys `shouldBe` 1
+      initialKey <-
+        case initialKeys of
+          [k] -> pure k
+          _ -> expectationFailure "Expected exactly one initial item key" >> error "unreachable"
+
+      -- Simulate watcher restart (lose all state).
+      _ <- releaseName watcher1 (busName_ "org.kde.StatusNotifierWatcher")
+      _watcher2 <- startWatcher
+
+      -- Item re-registers, this time using its well-known name.
+      WatcherClient.registerStatusNotifierItem itemClient "org.test.RestartRereg"
+        `shouldReturn` Right ()
+
+      -- Host should not keep both the old unique-name entry and the new
+      -- well-known entry.
+      deduped <-
+        waitFor 1500000 $ do
+          current <- itemInfoMap host
+          pure $
+            Map.size current == 1
+              && Map.member (busName_ "org.test.RestartRereg") current
+              && not (Map.member initialKey current)
+      deduped `shouldBe` True
 
   describe "propertyUpdateFailureLogLevel" $ do
     it "returns DEBUG when there are successful updates" $ do
