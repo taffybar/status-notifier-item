@@ -11,7 +11,7 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Concurrent (threadDelay)
-import Control.Exception (SomeException, bracket, try)
+import Control.Exception (SomeException, displayException, finally, try)
 import DBus (busName_, objectPath_)
 import DBus.Client
   ( Client,
@@ -44,8 +44,14 @@ data BusEnv = BusEnv
   }
 
 withIsolatedSessionBus :: ActionWith () -> IO ()
-withIsolatedSessionBus action =
-  bracket setup teardown (const $ action ())
+withIsolatedSessionBus action = do
+  setupResult <- (try setup :: IO (Either SomeException BusEnv))
+  case setupResult of
+    Right env -> action () `finally` teardown env
+    Left e ->
+      pendingWith $
+        "Skipping D-Bus integration test: "
+          <> displayException e
 
 setup :: IO BusEnv
 setup = do
