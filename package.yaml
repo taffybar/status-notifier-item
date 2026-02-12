@@ -70,6 +70,7 @@ tests:
       - dbus >= 1.2.1 && < 2.0.0
       - containers
       - directory
+      - filepath
       - hslogger
       - hspec
       - process

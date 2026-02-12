@@ -113,6 +113,7 @@ test-suite status-notifier-item-test
     , containers
     , dbus >=1.2.1 && <2.0.0
     , directory
+    , filepath
     , hslogger
     , hspec
     , process
