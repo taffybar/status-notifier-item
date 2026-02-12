@@ -1,5 +1,5 @@
 name:                status-notifier-item
-version:             0.3.2.4
+version:             0.3.2.5
 github:              "IvanMalison/status-notifier-item"
 license:             BSD3
 author:              "Ivan Malison"
@@ -70,6 +70,7 @@ tests:
       - dbus >= 1.2.1 && < 2.0.0
       - containers
       - directory
+      - filepath
       - hslogger
       - hspec
       - process

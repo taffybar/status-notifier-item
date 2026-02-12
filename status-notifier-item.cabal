@@ -5,7 +5,7 @@ cabal-version: 1.12
 -- see: https://github.com/sol/hpack
 
 name:           status-notifier-item
-version:        0.3.2.4
+version:        0.3.2.5
 synopsis:       A wrapper over the StatusNotifierItem/libappindicator dbus specification
 description:    Please see the README on Github at <https://github.com/IvanMalison/status-notifier-item#readme>
 category:       Desktop
@@ -113,6 +113,7 @@ test-suite status-notifier-item-test
     , containers
     , dbus >=1.2.1 && <2.0.0
     , directory
+    , filepath
     , hslogger
     , hspec
     , process

@@ -10,6 +10,7 @@ module TestSupport
 
 import Control.Concurrent (threadDelay)
 import Control.Exception (SomeException, bracket, try)
+import Control.Monad (filterM)
 import DBus (busName_, objectPath_)
 import DBus.Client
   ( Client
@@ -28,8 +29,10 @@ import StatusNotifier.Watcher.Constants
   )
 import qualified StatusNotifier.Watcher.Client as WatcherClient
 import qualified StatusNotifier.Watcher.Service as WatcherService
+import System.Directory (doesFileExist, findExecutable)
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.Exit (ExitCode, ExitCode (ExitSuccess))
+import System.FilePath ((</>), takeDirectory)
 import System.Process (readProcessWithExitCode)
 import Test.Hspec
 
@@ -39,6 +42,22 @@ data BusEnv = BusEnv
   , daemonPid :: String
   }
 
+findDbusSessionConfig :: IO (Maybe FilePath)
+findDbusSessionConfig = do
+  mExe <- findExecutable "dbus-daemon"
+  case mExe of
+    Nothing -> pure Nothing
+    Just exe -> do
+      let prefix = takeDirectory (takeDirectory exe)
+          candidates =
+            [ prefix </> "share" </> "dbus-1" </> "session.conf"
+            , prefix </> "etc" </> "dbus-1" </> "session.conf"
+            ]
+      existing <- filterM doesFileExist candidates
+      pure $ case existing of
+        c : _ -> Just c
+        _ -> Nothing
+
 withIsolatedSessionBus :: ActionWith () -> IO ()
 withIsolatedSessionBus action =
   bracket setup teardown (const $ action ())
@@ -47,10 +66,16 @@ setup :: IO BusEnv
 setup = do
   oldAddress <- lookupEnv "DBUS_SESSION_BUS_ADDRESS"
   oldPid <- lookupEnv "DBUS_SESSION_BUS_PID"
+  mConfig <- findDbusSessionConfig
+  let baseArgs = ["--fork", "--print-address=1", "--print-pid=1"]
+      args =
+        case mConfig of
+          Just configPath -> ["--config-file=" <> configPath] <> baseArgs
+          Nothing -> ["--session"] <> baseArgs
   (code, out, err) <-
     readProcessWithExitCode
       "dbus-daemon"
-      ["--session", "--fork", "--print-address=1", "--print-pid=1"]
+      args
       ""
   case (code, lines out) of
     (ExitSuccess, address : pidLine : _) -> do

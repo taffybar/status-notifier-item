@@ -1,5 +1,10 @@
 # Changelog for status-notifier-item
 
+## 0.3.2.5 - 2026-02-12
+- Test suite: start an isolated `dbus-daemon` using a session config shipped
+  alongside the `dbus-daemon` executable when available (fixes Nix sandbox
+  builds where `/etc/dbus-1/session.conf` is absent).
+
 ## 0.3.2.4 - 2026-02-12
 - Host: deduplicate items that re-register under a different bus name after a
   watcher restart (e.g. unique name vs well-known name), preventing duplicate
