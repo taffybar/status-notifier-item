@@ -1,5 +1,15 @@
 # Changelog for status-notifier-item
 
+## 0.3.2.6 - 2026-02-13
+- Watcher: persist item/host registrations to an XDG cache JSON file and
+  restore on startup with validation (bus owner + object/interface checks).
+- Watcher: keep persisted state in sync across registrations/unregistrations and
+  deduplicate/replace owner-equivalent path registrations.
+- Host: reconcile item state when watcher ownership changes so stale items are
+  removed after watcher restarts.
+- Add integration tests for cache restore, stale-cache pruning, post-restore
+  deduplication, and host watcher-owner-change reconciliation.
+
 ## 0.3.2.5 - 2026-02-12
 - Test suite: start an isolated `dbus-daemon` using a session config shipped
   alongside the `dbus-daemon` executable when available (fixes Nix sandbox

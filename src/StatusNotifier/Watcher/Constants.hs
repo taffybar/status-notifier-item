@@ -29,6 +29,7 @@ data WatcherParams = WatcherParams
   , watcherPath :: String
   , watcherStop :: IO ()
   , watcherDBusClient :: Maybe Client
+  , watcherStateCachePath :: Maybe FilePath
   }
 
 defaultWatcherParams :: WatcherParams
@@ -38,6 +39,7 @@ defaultWatcherParams =
   , watcherStop = return ()
   , watcherPath = "/StatusNotifierWatcher"
   , watcherDBusClient = Nothing
+  , watcherStateCachePath = Nothing
   }
 
 defaultWatcherInterfaceName =

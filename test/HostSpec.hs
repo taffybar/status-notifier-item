@@ -194,6 +194,31 @@ spec = around withIsolatedSessionBus $ do
               && not (Map.member initialKey current)
       deduped `shouldBe` True
 
+    it "removes stale items when watcher ownership changes and replacement watcher has no item" $ \() -> do
+      watcher1 <- startWatcher
+
+      hostClient <- connectSession
+      Just host <- build defaultParams {dbusClient = Just hostClient, uniqueIdentifier = "host-i"}
+
+      itemClient <- connectSession
+      cleanup <- registerSimpleItem itemClient "org.test.HostWatcherOwnerChange" defaultPath "folder"
+
+      added <-
+        waitFor 1500000 $ do
+          current <- itemInfoMap host
+          pure $ Map.member (busName_ "org.test.HostWatcherOwnerChange") current
+      added `shouldBe` True
+
+      _ <- releaseName watcher1 (busName_ "org.kde.StatusNotifierWatcher")
+      cleanup
+      _watcher2 <- startWatcher
+
+      removed <-
+        waitFor 1500000 $ do
+          current <- itemInfoMap host
+          pure $ not $ Map.member (busName_ "org.test.HostWatcherOwnerChange") current
+      removed `shouldBe` True
+
   describe "propertyUpdateFailureLogLevel" $ do
     it "returns DEBUG when there are successful updates" $ do
       let failures = [mkMethodError DBus.Client.errorFailed]

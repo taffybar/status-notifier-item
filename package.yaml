@@ -1,5 +1,5 @@
 name:                status-notifier-item
-version:             0.3.2.5
+version:             0.3.2.6
 github:              "IvanMalison/status-notifier-item"
 license:             BSD3
 author:              "Ivan Malison"
@@ -24,6 +24,7 @@ library:
     - bytestring
     - bytestring-to-vector
     - containers
+    - directory
     - dbus >= 1.2.1 && < 2.0.0
     - filepath
     - hslogger

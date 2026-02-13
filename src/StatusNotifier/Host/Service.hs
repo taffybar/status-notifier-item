@@ -294,6 +294,37 @@ build Params { dbusClient = mclient
         , (W.registerForStatusNotifierItemUnregistered, const handleItemRemoved)
         ]
 
+      watcherServiceName = coerce $ W.getWatcherInterfaceName namespaceString
+
+      synchronizeItemsWithWatcher = do
+        let retryDelayMicros = 50000
+            maxRetries = 20
+            fetchWatcherItems retries = do
+              watcherItemsResult <- W.getRegisteredStatusNotifierItems client
+              case watcherItemsResult of
+                Right watcherItems -> return $ Right watcherItems
+                Left err ->
+                  if retries <= 0
+                    then return $ Left err
+                    else threadDelay retryDelayMicros >>
+                         fetchWatcherItems (retries - 1)
+        watcherItemsResult <- fetchWatcherItems maxRetries
+        case watcherItemsResult of
+          Left err ->
+            logErrorWithMessage "Failed to synchronize host state with watcher:" err
+          Right watcherServiceNames -> do
+            currentMap <- readMVar itemInfoMapVar
+            let watcherBusNames = map (fst . parseServiceName) watcherServiceNames
+                missingFromWatcher =
+                  filter (`notElem` watcherBusNames) (Map.keys currentMap)
+            mapM_ (handleItemRemoved . coerce) missingFromWatcher
+            mapM_ handleItemAdded watcherServiceNames
+
+      handleWatcherNameOwnerChanged _ name _ newOwner =
+        when (name == watcherServiceName && newOwner /= "") $ do
+          logInfo "Watcher owner changed; synchronizing item state."
+          synchronizeItemsWithWatcher
+
       getSender fn s@M.Signal { M.signalSender = Just sender} =
         logInfo (show s) >> fn sender
       getSender _ s = logError $ "Received signal with no sender: " ++ show s
@@ -441,9 +472,11 @@ build Params { dbusClient = mclient
         -- conditions with the itemInfoMapVar.
         clientSignalHandlers <- registerWithPairs clientRegistrationPairs
         watcherSignalHandlers <- registerWithPairs watcherRegistrationPairs
+        watcherOwnerChangedHandler <-
+          DTH.registerForNameOwnerChanged client matchAny handleWatcherNameOwnerChanged
         let unregisterAll =
                 mapM_ (removeMatch client) $
-                    clientSignalHandlers ++ watcherSignalHandlers
+                    watcherOwnerChangedHandler : clientSignalHandlers ++ watcherSignalHandlers
             shutdownHost = do
                 logInfo "Shutting down StatusNotifierHost"
                 unregisterAll

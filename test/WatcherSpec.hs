@@ -131,5 +131,40 @@ spec = around withIsolatedSessionBus $ do
           stable `shouldBe` True
         ) `finally` cleanupB
 
+    it "restores live items from cache when the watcher restarts" $ \() -> do
+      watcher1 <- startWatcher
+      itemClient <- connectSession
+      cleanup <- registerSimpleItem itemClient "org.test.RestoreLive" defaultPath "network-wireless"
+      (do
+          _ <- releaseName watcher1 "org.kde.StatusNotifierWatcher"
+          watcher2 <- startWatcher
+          Right entries <- WatcherClient.getRegisteredSNIEntries watcher2
+          entries `shouldContain` [("org.test.RestoreLive", "/StatusNotifierItem")]
+        ) `finally` cleanup
+
+    it "drops cached items that no longer exist when restarting" $ \() -> do
+      watcher1 <- startWatcher
+      itemClient <- connectSession
+      cleanup <- registerSimpleItem itemClient "org.test.RestoreMissing" defaultPath "network-offline"
+      _ <- releaseName watcher1 "org.kde.StatusNotifierWatcher"
+      cleanup
+      watcher2 <- startWatcher
+      Right entries <- WatcherClient.getRegisteredSNIEntries watcher2
+      entries `shouldNotContain` [("org.test.RestoreMissing", "/StatusNotifierItem")]
+
+    it "deduplicates re-registration after restoring an item from cache" $ \() -> do
+      watcher1 <- startWatcher
+      itemClient <- connectSession
+      cleanup <- registerSimpleItem itemClient "org.test.RestoreDedup" defaultPath "folder"
+      (do
+          _ <- releaseName watcher1 "org.kde.StatusNotifierWatcher"
+          watcher2 <- startWatcher
+          WatcherClient.registerStatusNotifierItem itemClient "org.test.RestoreDedup"
+            `shouldReturn` Right ()
+          Right entries <- WatcherClient.getRegisteredSNIEntries watcher2
+          let matches = filter (== ("org.test.RestoreDedup", "/StatusNotifierItem")) entries
+          length matches `shouldBe` 1
+        ) `finally` cleanup
+
 defaultPath :: String
 defaultPath = "/StatusNotifierItem"

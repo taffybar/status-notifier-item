@@ -29,16 +29,26 @@ import StatusNotifier.Watcher.Constants
   )
 import qualified StatusNotifier.Watcher.Client as WatcherClient
 import qualified StatusNotifier.Watcher.Service as WatcherService
-import System.Directory (doesFileExist, findExecutable)
+import System.Directory
+  ( createDirectory
+  , doesFileExist
+  , findExecutable
+  , getTemporaryDirectory
+  , removeDirectoryRecursive
+  , removeFile
+  )
 import System.Environment (lookupEnv, setEnv, unsetEnv)
 import System.Exit (ExitCode, ExitCode (ExitSuccess))
 import System.FilePath ((</>), takeDirectory)
+import System.IO (hClose, openTempFile)
 import System.Process (readProcessWithExitCode)
 import Test.Hspec
 
 data BusEnv = BusEnv
   { previousAddress :: Maybe String
   , previousPid :: Maybe String
+  , previousCacheHome :: Maybe String
+  , cacheHome :: FilePath
   , daemonPid :: String
   }
 
@@ -72,6 +82,12 @@ setup :: IO BusEnv
 setup = do
   oldAddress <- lookupEnv "DBUS_SESSION_BUS_ADDRESS"
   oldPid <- lookupEnv "DBUS_SESSION_BUS_PID"
+  oldCacheHome <- lookupEnv "XDG_CACHE_HOME"
+  tempDir <- getTemporaryDirectory
+  (cachePath, cacheHandle) <- openTempFile tempDir "status-notifier-item-test-cache"
+  hClose cacheHandle
+  removeFile cachePath
+  createDirectory cachePath
   mConfig <- findDbusSessionConfig
   let baseArgs = ["--fork", "--print-address=1", "--print-pid=1"]
       args =
@@ -87,9 +103,12 @@ setup = do
     (ExitSuccess, address : pidLine : _) -> do
       setEnv "DBUS_SESSION_BUS_ADDRESS" address
       setEnv "DBUS_SESSION_BUS_PID" pidLine
+      setEnv "XDG_CACHE_HOME" cachePath
       pure BusEnv
         { previousAddress = oldAddress
         , previousPid = oldPid
+        , previousCacheHome = oldCacheHome
+        , cacheHome = cachePath
         , daemonPid = pidLine
         }
     _ ->
@@ -114,6 +133,10 @@ teardown BusEnv {..} = do
       IO (Either SomeException (ExitCode, String, String))
   restore "DBUS_SESSION_BUS_ADDRESS" previousAddress
   restore "DBUS_SESSION_BUS_PID" previousPid
+  restore "XDG_CACHE_HOME" previousCacheHome
+  _ <- try (removeDirectoryRecursive cacheHome) ::
+    IO (Either SomeException ())
+  pure ()
   where
     restore key value = maybe (unsetEnv key) (setEnv key) value
 

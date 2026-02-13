@@ -14,8 +14,8 @@ import Text.Printf
 
 import Paths_status_notifier_item (version)
 
-getWatcherParams :: String -> String -> Priority -> IO WatcherParams
-getWatcherParams namespace path priority = do
+getWatcherParams :: String -> String -> Priority -> Maybe FilePath -> IO WatcherParams
+getWatcherParams namespace path priority stateCachePath = do
   logger <- getLogger "StatusNotifier"
   saveGlobalLogger $ setLevel priority logger
   client <- connectSession
@@ -25,6 +25,7 @@ getWatcherParams namespace path priority = do
     { watcherNamespace = namespace
     , watcherPath = path
     , watcherDBusClient = Just client
+    , watcherStateCachePath = stateCachePath
     }
 
 watcherParamsParser :: Parser (IO WatcherParams)
@@ -47,6 +48,11 @@ watcherParamsParser = getWatcherParams
   <> help "Set the log level"
   <> metavar "LEVEL"
   <> value WARNING
+  ) <*> optional (strOption
+  (  long "state-cache-path"
+  <> metavar "FILEPATH"
+  <> help "Override the watcher state cache file path."
+  )
   )
 
 versionOption :: Parser (a -> a)

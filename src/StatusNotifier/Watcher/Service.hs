@@ -23,6 +23,7 @@ import           Data.String
 import qualified StatusNotifier.Item.Client as Item
 import           StatusNotifier.Util
 import           StatusNotifier.Watcher.Constants
+import           StatusNotifier.Watcher.StateCache
 import           StatusNotifier.Watcher.Signals
 import           System.IO.Unsafe
 import           System.Log.Logger
@@ -33,6 +34,7 @@ buildWatcher WatcherParams
                , watcherStop = stopWatcher
                , watcherPath = path
                , watcherDBusClient = mclient
+               , watcherStateCachePath = maybeCachePath
                } = do
   let watcherInterfaceName = getWatcherInterfaceName interfaceNamespace
       logNamespace = "StatusNotifier.Watcher.Service"
@@ -44,21 +46,177 @@ buildWatcher WatcherParams
         readOnlyProperty name $ log (coerce name ++ " Called") >> fn
 
   client <- maybe connectSession return mclient
+  cachePath <- maybe (defaultWatcherStateCachePath interfaceNamespace path)
+                     pure
+                     maybeCachePath
 
   notifierItems <- newMVar []
   notifierHosts <- newMVar []
 
   let itemIsRegistered item items =
         isJust $ find (== item) items
+
+      persistWatcherState = do
+        currentItems <- readMVar notifierItems
+        currentHosts <- readMVar notifierHosts
+        let toPersisted entry =
+              PersistedItemEntry
+                { persistedServiceName = coerce (serviceName entry)
+                , persistedServicePath = coerce (servicePath entry)
+                }
+            persistedState =
+              PersistedWatcherState
+                { persistedItems = map toPersisted currentItems
+                , persistedHosts = map toPersisted currentHosts
+                }
+        writePersistedWatcherState cachePath persistedState >>=
+          either
+            (\err ->
+               logError $
+                 printf "Failed to persist watcher state to %s: %s" cachePath err
+            )
+            (const $ return ())
+
+      renderServiceName :: ItemEntry -> String
       renderServiceName ItemEntry { serviceName = busName
                                   , servicePath = path
                                   } =
-        let bus = coerce busName
-            objPath = coerce path
-            defaultPath = coerce Item.defaultPath
+        let bus = (coerce busName :: String)
+            objPath = (coerce path :: String)
+            defaultPath = (coerce Item.defaultPath :: String)
         in if objPath == defaultPath
            then bus
            else bus ++ objPath
+
+      resolveOwner bus
+        | ":" `isPrefixOf` (coerce bus :: String) = return (Just bus)
+        | otherwise = do
+            result <- DBusTH.getNameOwner client (coerce bus)
+            return $ busName_ <$> either (const Nothing) Just result
+
+      insertItemNoSignal owner item currentItems = do
+        ownerPathMatches <-
+          case owner of
+            Nothing -> return []
+            Just itemOwner ->
+              filterM
+                (\existingItem ->
+                   if servicePath existingItem == servicePath item
+                     then do
+                       existingOwner <- resolveOwner (serviceName existingItem)
+                       return $ existingOwner == Just itemOwner
+                     else return False
+                )
+                currentItems
+        if itemIsRegistered item currentItems
+          then return (currentItems, False)
+          else
+            if null ownerPathMatches
+              then return (item : currentItems, True)
+              else
+                let removeMatches =
+                      foldl' (flip delete) currentItems ownerPathMatches
+                in return (item : removeMatches, True)
+
+      insertHostNoSignal host currentHosts =
+        if itemIsRegistered host currentHosts
+          then (currentHosts, False)
+          else (host : currentHosts, True)
+
+      parsePersistedItemEntry persistedEntry = do
+        parsedBusName <- T.parseBusName (persistedServiceName persistedEntry)
+        parsedPath <- T.parseObjectPath (persistedServicePath persistedEntry)
+        return ItemEntry
+          { serviceName = parsedBusName
+          , servicePath = parsedPath
+          }
+
+      statusNotifierItemInterfaceName = fromString "org.kde.StatusNotifierItem"
+      hasStatusNotifierItemInterface objectInfo =
+        any ((== statusNotifierItemInterfaceName) . I.interfaceName) $
+        I.objectInterfaces objectInfo
+
+      validatePersistedItem persistedEntry =
+        case parsePersistedItemEntry persistedEntry of
+          Nothing -> do
+            logError $ printf "Dropping unparsable cached item entry: %s" $
+              show persistedEntry
+            return Nothing
+          Just item -> do
+            owner <- resolveOwner (serviceName item)
+            case owner of
+              Nothing -> do
+                log $
+                  printf "Dropping cached item %s because the bus name is no longer owned."
+                    (renderServiceName item)
+                return Nothing
+              Just validOwner -> do
+                objectResult <-
+                  getInterfaceAt client (serviceName item) (servicePath item)
+                case objectResult of
+                  Right (Just objectInfo)
+                    | hasStatusNotifierItemInterface objectInfo ->
+                        return $ Just (item, validOwner)
+                  _ -> do
+                    log $
+                      printf "Dropping cached item %s because it no longer exposes org.kde.StatusNotifierItem."
+                        (renderServiceName item)
+                    return Nothing
+
+      validatePersistedHost persistedEntry =
+        case parsePersistedItemEntry persistedEntry of
+          Nothing -> do
+            logError $ printf "Dropping unparsable cached host entry: %s" $
+              show persistedEntry
+            return Nothing
+          Just host -> do
+            owner <- resolveOwner (serviceName host)
+            if isNothing owner
+              then do
+                log $
+                  printf "Dropping cached host %s because the bus name is no longer owned."
+                    (coerce (serviceName host) :: String)
+                return Nothing
+              else return $ Just host
+
+      restoreWatcherStateFromCache = do
+        stateResult <- readPersistedWatcherState cachePath
+        case stateResult of
+          Left err -> do
+            logError $
+              printf "Failed to read watcher cache state from %s: %s" cachePath err
+            return ([], [])
+          Right Nothing -> return ([], [])
+          Right (Just persistedState) -> do
+            validItems <- catMaybes <$> mapM validatePersistedItem (persistedItems persistedState)
+            validHosts <- catMaybes <$> mapM validatePersistedHost (persistedHosts persistedState)
+
+            restoredItems <-
+              modifyMVar notifierItems $ \currentItems -> do
+                (newItems, insertedItemsRev) <-
+                  foldM
+                    (\(accItems, accInserted) (item, itemOwner) -> do
+                       (nextItems, inserted) <- insertItemNoSignal (Just itemOwner) item accItems
+                       if inserted
+                         then return (nextItems, item : accInserted)
+                         else return (nextItems, accInserted)
+                    )
+                    (currentItems, [])
+                    validItems
+                return (newItems, reverse insertedItemsRev)
+
+            restoredHosts <-
+              modifyMVar notifierHosts $ \currentHosts -> do
+                let insertHost (accHosts, accInserted) host =
+                      let (nextHosts, inserted) = insertHostNoSignal host accHosts
+                      in if inserted
+                           then (nextHosts, host : accInserted)
+                           else (nextHosts, accInserted)
+                    (newHosts, insertedHostsRev) = foldl' insertHost (currentHosts, []) validHosts
+                return (newHosts, reverse insertedHostsRev)
+
+            persistWatcherState
+            return (restoredItems, restoredHosts)
 
       registerStatusNotifierItem MethodCall
                                    { methodCallSender = sender }
@@ -73,11 +231,6 @@ buildWatcher WatcherParams
             remapErrorName =
               left $ (`makeErrorReply` "Failed to verify ownership.") .
                    M.methodErrorName
-            resolveOwner bus
-              | ":" `isPrefixOf` (coerce bus :: String) = return (Just bus)
-              | otherwise = do
-                  result <- DBusTH.getNameOwner client (coerce bus)
-                  return $ busName_ <$> either (const Nothing) Just result
         when (isNothing parsedBusName && isNothing (T.parseObjectPath name)) $
           throwE parseServiceError
         senderName <- ExceptT $ return $ maybeToEither senderMissingError sender
@@ -96,32 +249,25 @@ buildWatcher WatcherParams
         let item = ItemEntry { serviceName = busName
                              , servicePath = path
                              }
-        lift $ modifyMVar_ notifierItems $ \currentItems ->
-          do
-            ownerPathMatches <- filterM (\existingItem ->
-              if servicePath existingItem == path
-              then do
-                existingOwner <- resolveOwner (serviceName existingItem)
-                return $ existingOwner == Just senderName
-              else return False) currentItems
-            if itemIsRegistered item currentItems || not (null ownerPathMatches)
-            then return currentItems
-            else do
-              emitStatusNotifierItemRegistered client $ renderServiceName item
-              return $ item : currentItems
+        changed <- lift $ modifyMVar notifierItems $ \currentItems -> do
+          (newItems, inserted) <- insertItemNoSignal (Just senderName) item currentItems
+          return (newItems, inserted)
+        lift $
+          when changed $ do
+            emitStatusNotifierItemRegistered client $ renderServiceName item
+            persistWatcherState
 
       registerStatusNotifierHost name =
         let item = ItemEntry { serviceName = busName_ name
                              , servicePath = "/StatusNotifierHost"
                              } in
-        modifyMVar_ notifierHosts $ \currentHosts ->
-          if itemIsRegistered item currentHosts
-          then
-            return currentHosts
-          else
-            do
-              emitStatusNotifierHostRegistered client
-              return $ item : currentHosts
+        do
+          changed <- modifyMVar notifierHosts $ \currentHosts ->
+            let (newHosts, inserted) = insertHostNoSignal item currentHosts
+            in return (newHosts, inserted)
+          when changed $ do
+            emitStatusNotifierHostRegistered client
+            persistWatcherState
 
       registeredStatusNotifierItems :: IO [String]
       registeredStatusNotifierItems =
@@ -162,6 +308,8 @@ buildWatcher WatcherParams
           removedHosts <- filterDeadService name notifierHosts
           unless (null removedHosts) $
             log $ printf "Unregistering host %s because it disappeared." name
+          when (not (null removedItems) || not (null removedHosts)) $
+            persistWatcherState
           return ()
 
       watcherMethods = map mkLogMethod
@@ -201,7 +349,11 @@ buildWatcher WatcherParams
             do
               _ <- DBusTH.registerForNameOwnerChanged client
                    matchAny handleNameOwnerChanged
+              (restoredItems, restoredHosts) <- restoreWatcherStateFromCache
               export client (fromString path) watcherInterface
+              mapM_ (emitStatusNotifierItemRegistered client . renderServiceName)
+                restoredItems
+              mapM_ (const $ emitStatusNotifierHostRegistered client) restoredHosts
           _ -> stopWatcher
         return nameRequestResult
 
