@@ -1,5 +1,8 @@
 # Changelog for status-notifier-item
 
+## 0.3.2.8 - 2026-02-13
+- Relax dependency bounds for GHC 9.12 (`template-haskell`, `optparse-applicative`).
+
 ## 0.3.2.7 - 2026-02-13
 - Watcher: default `--log-level` is now INFO.
 - Watcher: log item/host registrations at INFO; keep per-request method/property
