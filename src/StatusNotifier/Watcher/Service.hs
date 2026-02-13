@@ -38,12 +38,15 @@ buildWatcher WatcherParams
                } = do
   let watcherInterfaceName = getWatcherInterfaceName interfaceNamespace
       logNamespace = "StatusNotifier.Watcher.Service"
-      log = logM logNamespace  INFO
+      logInfo = logM logNamespace INFO
+      logDebug = logM logNamespace DEBUG
       logError = logM logNamespace ERROR
-      mkLogCb cb msg = lift (log (show msg)) >> cb msg
+      -- Default level is now INFO (watcher/Main.hs). Keep generic per-request
+      -- logging at DEBUG to avoid spamming INFO for frequent property reads.
+      mkLogCb cb msg = lift (logDebug (show msg)) >> cb msg
       mkLogMethod method = method { methodHandler = mkLogCb $ methodHandler method }
       mkLogProperty name fn =
-        readOnlyProperty name $ log (coerce name ++ " Called") >> fn
+        readOnlyProperty name $ logDebug (coerce name ++ " Called") >> fn
 
   client <- maybe connectSession return mclient
   cachePath <- maybe (defaultWatcherStateCachePath interfaceNamespace path)
@@ -146,7 +149,7 @@ buildWatcher WatcherParams
             owner <- resolveOwner (serviceName item)
             case owner of
               Nothing -> do
-                log $
+                logInfo $
                   printf "Dropping cached item %s because the bus name is no longer owned."
                     (renderServiceName item)
                 return Nothing
@@ -158,7 +161,7 @@ buildWatcher WatcherParams
                     | hasStatusNotifierItemInterface objectInfo ->
                         return $ Just (item, validOwner)
                   _ -> do
-                    log $
+                    logInfo $
                       printf "Dropping cached item %s because it no longer exposes org.kde.StatusNotifierItem."
                         (renderServiceName item)
                     return Nothing
@@ -173,7 +176,7 @@ buildWatcher WatcherParams
             owner <- resolveOwner (serviceName host)
             if isNothing owner
               then do
-                log $
+                logInfo $
                   printf "Dropping cached host %s because the bus name is no longer owned."
                     (coerce (serviceName host) :: String)
                 return Nothing
@@ -254,6 +257,7 @@ buildWatcher WatcherParams
           return (newItems, inserted)
         lift $
           when changed $ do
+            logInfo $ printf "Registered item %s." (renderServiceName item)
             emitStatusNotifierItemRegistered client $ renderServiceName item
             persistWatcherState
 
@@ -266,6 +270,7 @@ buildWatcher WatcherParams
             let (newHosts, inserted) = insertHostNoSignal item currentHosts
             in return (newHosts, inserted)
           when changed $ do
+            logInfo $ printf "Registered host %s." name
             emitStatusNotifierHostRegistered client
             persistWatcherState
 
@@ -302,12 +307,12 @@ buildWatcher WatcherParams
         when (newOwner == "") $ do
           removedItems <- filterDeadService name notifierItems
           unless (null removedItems) $ do
-            log $ printf "Unregistering item %s because it disappeared." name
+            logInfo $ printf "Unregistering item %s because it disappeared." name
             forM_ removedItems $ \item ->
               emitStatusNotifierItemUnregistered client $ renderServiceName item
           removedHosts <- filterDeadService name notifierHosts
           unless (null removedHosts) $
-            log $ printf "Unregistering host %s because it disappeared." name
+            logInfo $ printf "Unregistering host %s because it disappeared." name
           when (not (null removedItems) || not (null removedHosts)) $
             persistWatcherState
           return ()
@@ -351,6 +356,10 @@ buildWatcher WatcherParams
                    matchAny handleNameOwnerChanged
               (restoredItems, restoredHosts) <- restoreWatcherStateFromCache
               export client (fromString path) watcherInterface
+              logInfo $
+                printf "Restored %d cached items and %d cached hosts."
+                  (length restoredItems)
+                  (length restoredHosts)
               mapM_ (emitStatusNotifierItemRegistered client . renderServiceName)
                 restoredItems
               mapM_ (const $ emitStatusNotifierHostRegistered client) restoredHosts

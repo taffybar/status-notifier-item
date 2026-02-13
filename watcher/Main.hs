@@ -47,7 +47,7 @@ watcherParamsParser = getWatcherParams
   <> short 'l'
   <> help "Set the log level"
   <> metavar "LEVEL"
-  <> value WARNING
+  <> value INFO
   ) <*> optional (strOption
   (  long "state-cache-path"
   <> metavar "FILEPATH"
@@ -59,7 +59,7 @@ versionOption :: Parser (a -> a)
 versionOption = infoOption
                 (printf "status-notifier-watcher %s" $ showVersion version)
                 (  long "version"
-                <> help "Show the version number of gtk-sni-tray"
+                <> help "Show the version number of status-notifier-watcher"
                 )
 
 main :: IO ()

@@ -1,5 +1,12 @@
 # Changelog for status-notifier-item
 
+## 0.3.2.7 - 2026-02-13
+- Watcher: default `--log-level` is now INFO.
+- Watcher: log item/host registrations at INFO; keep per-request method/property
+  tracing at DEBUG to avoid spamming.
+- Host: downgrade noisy INFO/WARNING logs (signal dumps, handler updates, and
+  expected removal/mismatch cases) to DEBUG.
+
 ## 0.3.2.6 - 2026-02-13
 - Watcher: persist item/host registrations to an XDG cache JSON file and
   restore on startup with validation (bus owner + object/interface checks).

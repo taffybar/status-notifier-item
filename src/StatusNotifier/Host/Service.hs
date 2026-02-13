@@ -142,10 +142,12 @@ build Params { dbusClient = mclient
       logErrorWithMessage message error = logError message >> logError (show error)
 
       logInfo = hostLogger INFO
+      logDebug = hostLogger DEBUG
       logErrorAndThen andThen e = logError (show e) >> andThen
 
       doUpdateForHandler utype uinfo (unique, handler) = do
-        logInfo (printf "Sending update (iconPixmaps suppressed): %s %s, for handler %s"
+        -- This is extremely chatty under normal operation; keep it at DEBUG.
+        logDebug (printf "Sending update (iconPixmaps suppressed): %s %s, for handler %s"
                           (show utype)
                           (show $ supressPixelData uinfo)
                           (show $ hashUnique unique))
@@ -286,7 +288,8 @@ build Params { dbusClient = mclient
           doRemove currentMap =
             return (Map.delete busName currentMap, Map.lookup busName currentMap)
           logNonExistentRemoval =
-            hostLogger WARNING $ printf "Attempt to remove unknown item %s" $
+            -- This can happen due to watcher/host races (e.g. watcher restart).
+            hostLogger DEBUG $ printf "Attempt to remove unknown item %s" $
                        show busName
 
       watcherRegistrationPairs =
@@ -326,7 +329,8 @@ build Params { dbusClient = mclient
           synchronizeItemsWithWatcher
 
       getSender fn s@M.Signal { M.signalSender = Just sender} =
-        logInfo (show s) >> fn sender
+        -- Signal dumps are too noisy at INFO.
+        logDebug (show s) >> fn sender
       getSender _ s = logError $ "Received signal with no sender: " ++ show s
 
       runProperty prop serviceName =
@@ -376,7 +380,7 @@ build Params { dbusClient = mclient
                                         (show senderNameOwner)
                                         (show infoNameOwner)
                       when (senderNameOwner /= infoNameOwner) $
-                           hostLogger WARNING warningText
+                           hostLogger DEBUG warningText
                       return doMatchUnmatchedSender
                     else return False
               lift $ findM matchesSender (Map.elems infoMap)
