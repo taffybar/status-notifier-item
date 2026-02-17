@@ -2,9 +2,19 @@
 
 module HostSpec (spec) where
 
-import Control.Concurrent (newChan, readChan, writeChan)
+import Control.Concurrent
+  ( forkIO
+  , newChan
+  , newEmptyMVar
+  , putMVar
+  , readChan
+  , takeMVar
+  , threadDelay
+  , tryPutMVar
+  , writeChan
+  )
 import Control.Exception (finally)
-import Control.Monad (replicateM)
+import Control.Monad (replicateM, void)
 import Data.List (sort)
 import qualified Data.Map.Strict as Map
 import DBus (busName_, objectPath_)
@@ -218,6 +228,51 @@ spec = around withIsolatedSessionBus $ do
           current <- itemInfoMap host
           pure $ not $ Map.member (busName_ "org.test.HostWatcherOwnerChange") current
       removed `shouldBe` True
+
+    it "does not emit duplicate ItemAdded when addUpdateHandler races with replay" $ \() -> do
+      _watcher <- startWatcher
+      hostClient <- connectSession
+      Just host <- build defaultParams {dbusClient = Just hostClient, uniqueIdentifier = "host-j"}
+
+      itemClient <- connectSession
+      buildStarted <- newEmptyMVar
+      continueBuild <- newEmptyMVar
+      let itemName = "org.test.HostHandlerRace"
+          iface =
+            Interface
+              { interfaceName = "org.kde.StatusNotifierItem"
+              , interfaceMethods = []
+              , interfaceProperties =
+                  [ readOnlyProperty "IconName" $ do
+                      void $ tryPutMVar buildStarted ()
+                      takeMVar continueBuild
+                      pure ("folder" :: String)
+                  , readOnlyProperty "OverlayIconName" (pure ("" :: String))
+                  , readOnlyProperty "ItemIsMenu" (pure False)
+                  ]
+              , interfaceSignals = []
+              }
+      export itemClient (objectPath_ defaultPath) iface
+      _ <- requestName itemClient (busName_ itemName) []
+      WatcherClient.registerStatusNotifierItem itemClient itemName
+        `shouldReturn` Right ()
+
+      -- Host is now blocked building the item while holding itemInfoMapVar.
+      takeMVar buildStarted
+
+      events <- newChan
+      _ <- forkIO $ do
+        threadDelay 50000
+        putMVar continueBuild ()
+      _ <- addUpdateHandler host (\ut info -> writeChan events (ut, itemServiceName info))
+
+      first <- timeout 1500000 (readChan events)
+      first `shouldBe` Just (ItemAdded, busName_ itemName)
+      second <- timeout 300000 (readChan events)
+      second `shouldBe` Nothing
+
+      _ <- releaseName itemClient (busName_ itemName)
+      pure ()
 
   describe "propertyUpdateFailureLogLevel" $ do
     it "returns DEBUG when there are successful updates" $ do

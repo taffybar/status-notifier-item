@@ -158,9 +158,13 @@ build Params { dbusClient = mclient
 
       addHandler handler = do
         unique <- newUnique
-        modifyMVar_ updateHandlersVar (return . ((unique, handler):))
-        let doUpdateForInfo info = doUpdateForHandler ItemAdded info (unique, handler)
-        readMVar itemInfoMapVar >>= mapM_ doUpdateForInfo
+        modifyMVar_ itemInfoMapVar $ \itemInfoMap -> do
+          -- Register and replay under the item map lock so a concurrent add
+          -- cannot be delivered both live and via replay.
+          modifyMVar_ updateHandlersVar (return . ((unique, handler):))
+          let doUpdateForInfo info = doUpdateForHandler ItemAdded info (unique, handler)
+          mapM_ doUpdateForInfo itemInfoMap
+          return itemInfoMap
         return unique
 
       removeHandler unique =

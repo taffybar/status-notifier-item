@@ -1,5 +1,12 @@
 # Changelog for status-notifier-item
 
+## 0.3.2.8 - 2026-02-17
+- Host: eliminate duplicate `ItemAdded` deliveries to newly-registered update
+  handlers by making handler registration + initial replay atomic with respect
+  to item map updates.
+- Add a deterministic host integration test that reproduces and guards against
+  duplicate `ItemAdded` events from replay/live-update races.
+
 ## 0.3.2.7 - 2026-02-13
 - Watcher: default `--log-level` is now INFO.
 - Watcher: log item/host registrations at INFO; keep per-request method/property
