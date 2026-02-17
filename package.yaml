@@ -1,5 +1,5 @@
 name:                status-notifier-item
-version:             0.3.2.9
+version:             0.3.2.10
 github:              "IvanMalison/status-notifier-item"
 license:             BSD3
 author:              "Ivan Malison"
@@ -29,7 +29,7 @@ library:
     - filepath < 1.6
     - hslogger < 1.4
     - lens < 5.4
-    - template-haskell < 2.23
+    - template-haskell < 2.24
     - text < 2.2
     - transformers < 0.7
     - vector < 0.14
@@ -43,7 +43,7 @@ executables:
       - dbus-hslogger >= 0.1.0.1 && < 0.2
       - hslogger < 1.4
       - status-notifier-item
-      - optparse-applicative < 0.19
+      - optparse-applicative < 0.20
     main: Main.hs
   sni-cl-tool:
     source-dirs: ./tool
@@ -51,14 +51,14 @@ executables:
       - base >= 4.7 && < 5
       - dbus >= 1.2.1 && < 2
       - status-notifier-item
-      - optparse-applicative < 0.19
+      - optparse-applicative < 0.20
     main: Main.hs
   status-notifier-item-static:
     source-dirs: ./item
     dependencies:
       - base >= 4.7 && < 5
       - status-notifier-item
-      - optparse-applicative < 0.19
+      - optparse-applicative < 0.20
     main: Main.hs
 
 tests:
