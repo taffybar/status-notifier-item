@@ -1,6 +1,6 @@
 # Changelog for status-notifier-item
 
-## 0.3.2.8 - 2026-02-17
+## 0.3.2.9 - 2026-02-17
 - Host: eliminate duplicate `ItemAdded` deliveries to newly-registered update
   handlers by making handler registration + initial replay atomic with respect
   to item map updates.
